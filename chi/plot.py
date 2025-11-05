@@ -4,7 +4,7 @@ import os
 import matplotlib.patches as patches
 
 
-def opt(t, x1, x2, x_f, epsilon, u_n, u_norms, state_folder, norm_folder):
+def opt(t, x1, x2,x3,  x_f, epsilon, u_n, u_norms, uc_norms, state_folder, norm_folder):
 
     t_axis = range(t+1)
     plt.figure(figsize = (10,6))
@@ -17,6 +17,7 @@ def opt(t, x1, x2, x_f, epsilon, u_n, u_norms, state_folder, norm_folder):
     plt.scatter(x1[0, 0], x1[1, 0], color='green', marker='x', s=100, label='Start')
     plt.scatter(x1[0,-1], x1[1, -1], color = 'red', marker = 'x', s= 150, label = 'final')
     plt.scatter(x2[0, -1], x2[1, -1], color = 'red', marker='x', s = 150, label = 'final2')
+    plt.scatter(x3[0, -1], x3[1, -1], color = 'blue', marker = 'x', s = 150, label = 'final_cheb')
     circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
                         fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
     plt.gca().add_patch(circle)
@@ -37,7 +38,8 @@ def opt(t, x1, x2, x_f, epsilon, u_n, u_norms, state_folder, norm_folder):
 
     plt.plot(range(1, t+1), u_n, 'k--s', label='‖uₜ‖₂')
     plt.plot(range(1, t+1), u_norms, marker='o', linewidth=2, label ='exact constraint')
-   
+    plt.plot(range(1, t+1), uc_norms, marker ='x', color = 'red', label='u_cheb')
+
     plt.xlabel('time step')
     plt.ylabel('u-norm')
     # plt.title('u norm = {}, u2_norm = {}:'.format(np.linalg.norm(u), np.linalg.norm(u_exact)**2))
