@@ -6,6 +6,7 @@ from datagen import get_system
 import math
 import cvxpy as cp
 import GPy
+from plot import gp
 #gp code for different scenerios
 
 #1. unknown cost, known model, set of u with dim mT
@@ -167,7 +168,7 @@ for l in range(0, n+1):
     plt.legend()
     plt.pause(0.4)
 plt.savefig('updates.jpeg')
-
+print('chosen u at time step t = {}'.format(t), u_obs[t])
 plt.figure(figsize = (10, 6))
 x = np.arange(len(indices1))
 plt.plot(x, indices1, marker= 'x', color = 'blue', label ='index of chosen input')
@@ -176,6 +177,7 @@ plt.ylabel('index number')
 plt.grid(True)
 plt.legend()
 plt.savefig('chosen.jpeg')
+gp(Q, u_obs[-1], m, t)
 
 
 

@@ -80,4 +80,17 @@ def diff(T_list, u_norm_diff_list, state_dev_diff_list, diff_folder):
 
 
 
-
+def gp(Q, u, m, T):
+    c = []
+    for i in range(0, m*T, m):
+        cu = 0
+        cu = cu+ (u[i:i+m] @ Q @ u[i:i+m].T)
+        c.append(cu)
+    plt.figure(figsize = (8,5))
+    x = np.arange(0, T)
+    plt.plot(x, c, marker = 'x', label = 'gp_offline')
+    plt.grid(True)
+    plt.xlabel('time step')
+    plt.ylabel('u norm')
+    plt.legend()
+    plt.savefig('offline_gp.jpeg')
