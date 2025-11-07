@@ -15,10 +15,10 @@ from plot import opt, diff
 n, m = 2, 2
 x_0 = np.array([0.0, 0.0])
 
-T_list = range(1, 20)  
+T_list = range(1, 2)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
-epsilon = 0.88
+epsilon = 0.9
 delta = 0.9
 Q = np.diag([2.0, 1.0])
 q = norm.ppf(1 - delta)
