@@ -198,17 +198,138 @@ plt.plot(X_, Y_, "kx", mew = 2)
 plt.savefig('GP fit.jpg')
 
 
-
-
-
-
-
-    
-
-    
-
-
 #outline: backend: system equation, have a prior on input equation, sample input, apply, observe state, record cost, get posterior
+# gp-ucb: we have some prior currently. 
+
+# D = np.linspace(-100, 100, 10000)[:, None]
+# N = 50
+
+# k = GPy.kern.RBF(1, variance = 1., lengthscale = 0.1, name = 'RBF')
+
+# def imean(X):
+#     return (np.zeros(len(X)))
+
+# def updated_mean(ksx, kxx, y):
+#     return (ksx @ np.linalg.inv(kxx) @ y)
+
+# def updated_cov(kss, ksx, kxx):
+#     return(kss - ksx @ np.linalg.inv(kxx) @ksx.T)
+
+# def evaluate(x, D, k):
+#     kxx = k.K(x, x) + np.eye(len(x))
+#     ksx = k.K(D, x)
+#     kss = k.K(D, D)
+
+#     return(kxx, ksx, kss)
+
+# def func(x):
+#     y = -np.cos(2*np.pi*x) + 0.5*np.sin(6*np.pi*x) 
+#     ep = np.random.normal(0, 0.1, 1)
+#     return (y + ep)
 
 
-  
+# beta = 0.5
+# print(k.K(D, D))
+# print(imean(D))
+# emp = np.empty((0,1))
+# empy = np.empty((0,1))
+# for t in range(3):
+#     if t == 0:
+#         var = np.diag(k.K(D, D)) 
+#         score = imean(D) + (beta**0.5 * var)
+#         xt = np.argmax(score)
+#         yt = func(D[xt])
+#         xs = np.array([[D[xt]]])
+#         ys = np.array(yt)
+#         x = np.vstack((emp, xs))
+#         y = np.vstack((empy, ys))
+#         kxx, ksx, kss = evaluate(x, D, k)
+     
+#         mean = updated_mean(ksx, kxx, y)
+        
+#         Cov = updated_cov(kss, ksx, kxx)
+        
+        
+#     else:
+#         var = np.diag(Cov)    
+#         score =  + (beta**0.5 * var)
+
+    # xt = np.argmax(score)
+    # yt = func(D[xt])
+    # xs = np.array(xt).reshape(-1, 1)
+    # ys = np.array(yt).reshape(-1, 1)
+    # x = np.vstack((emp, xs))
+    # y = np.vstack((empy, ys))
+    # print(np.shape(x))
+    # print(np.shape(y))
+    # kxx, ksx, kss = evaluate(x, x, k)
+    # mean = updated_mean(ksx, kxx, y)
+    # Cov = updated_cov(kss, ksx, kxx)
+    
+
+    
+
+    
+        
+    #  print(xt)
+
+# Define kernel
+k =  GPy.kern.RBF(1, variance = 1., lengthscale = 0.1, name = 'RBF')
+
+# Domain
+D = np.linspace(-5, 5, 500).reshape(-1, 1)
+N = D.shape[0]
+
+# GP prior
+mu = np.zeros((N, 1))
+C = k.K(D, D)
+sigma_noise = 1e-2
+Sigma = C.copy()
+
+# Storage
+x_obs = np.empty((0, 1))
+y_obs = np.empty((0, 1))
+
+# GP-UCB parameters
+T = 12
+beta_t = lambda t: 2 * np.log(N * np.pi**2 * t**2 / (6 * 0.1))  # δ=0.1 confidence level
+means = {}
+plt.figure(figsize=(10, 5))
+for t in range(0, T + 1):
+    std = np.sqrt(np.diag(Sigma)).reshape(-1, 1)
+    ucb = mu + np.sqrt(beta_t(t)) * std
+
+    # Select next point
+    idx = np.argmax(ucb)
+    x_t = D[idx].reshape(1, 1)
+
+    # Sample from function with noise (ground truth: sin)
+    y_t = np.sin(x_t) + np.random.normal(0, sigma_noise, size=(1, 1))
+
+    # Update data
+    x_obs = np.vstack((x_obs, x_t))
+    y_obs = np.vstack((y_obs, y_t))
+    # GP Bayesian update
+    K_xx = k.K(x_obs, x_obs) + sigma_noise**2 * np.eye(len(x_obs))
+    print(np.shape(K_xx))
+    K_Dx = k.K(D, x_obs)
+    K_xx_inv = np.linalg.inv(K_xx)
+
+    mu = K_Dx @ K_xx_inv @ y_obs
+    Sigma = C - K_Dx @ K_xx_inv @ K_Dx.T
+
+    print(np.shape(mu))
+    print(np.shape(Sigma))
+# Plot final posterior
+    plt.clf()
+    plt.plot(D, mu, label="Posterior mean", color='blue')
+    plt.fill_between(D.ravel(), (mu - 1*std).ravel(), (mu + 1*std).ravel(), alpha=0.2, color='blue', label='±2 std')
+    plt.plot(D, np.sin(D), 'r--', label="True function")
+    plt.scatter(x_obs, y_obs, color='black', zorder=5, label="Observations")
+    plt.title("GP-UCB")
+    plt.legend()
+    # plt.grid(True)
+    plt.pause(0.4)
+plt.savefig('updates.jpeg')
+
+

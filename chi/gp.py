@@ -23,9 +23,9 @@ q = norm.ppf(1 - delta)
 name = 'stable'
 Q = np.diag([2.0, 1.0])
 
-gp_norm_folder = 'norms_{}'.format(name)
-gp_state_folder = 'states_{}'.format(name)
-gp_diff_folder = 'diffs_{}'.format(name)
+gp_norm_folder = 'gp_norms_{}'.format(name)
+gp_state_folder = 'gp_states_{}'.format(name)
+gp_diff_folder = 'gp_diffs_{}'.format(name)
 
 
 t = 5
@@ -91,8 +91,9 @@ def sample_from_ellipsoid(C_T, b, r, num_samples):
 
     return u_samples.T 
     
-    
-num_samples = 100
+#interaction phase   
+train_samples = 3 #interaction samples
+set_samples = 50
 
 def cost(t, u):
     w = np.random.rand(1)
@@ -105,79 +106,82 @@ def cost(t, u):
         c.append(cu)
     return np.array(c).reshape(-1, 1)             
 
-u_train = sample_from_ellipsoid(C_T, b, r_cheb, num_samples)
+u_set = sample_from_ellipsoid(C_T, b, r_cheb, set_samples)
+print(np.shape(u_set))
+indices = np.random.choice(u_set.shape[0], size = 3, replace=False)
+u_train = u_set[indices]
 print(u_train)
 y_train = cost(t, u_train)
     
-# GP prior
-mu = np.zeros((num_samples, 1))
+# # GP prior
+mu = np.zeros((train_samples, 1))
 k = GPy.kern.RBF(input_dim=m*t, variance=1., lengthscale=0.1, name='RBF')  
-C = k.K(u_train, u_train)
+C = k.K(u_train, u_train) # covariance between training samples
 Sigma = C.copy()
-u_obs = np.empty((0, m*t))
-y_obs = np.empty((0, 1))
+u_new = np.empty((0, m*t))
+y_new = np.empty((0, 1))
+Kuu = k.K(u_train, u_train)
+n = 5                            
+beta_t = lambda t: 2 * np.log(train_samples * np.pi**2 * (t+1)**2 / (6*0.1))  
 
-n = 20                             
-beta_t = lambda t: 2 * np.log(num_samples * np.pi**2 * (t+1)**2 / (6*0.1))  
+# means = {}
+# indices1 = []
 
-means = {}
-indices1 = []
-# training
 for l in range(0, n+1):
     std = np.sqrt(np.diag(Sigma)).reshape(-1,1)
     ucb = -1*mu + np.sqrt(beta_t(l)) * std
 
-    idx = np.argmax(ucb)
-    u_t = u_train[idx, :].reshape(1, -1)            
-    y_t = y_train[idx].reshape(1, 1)                
+#     idx = np.argmax(ucb)
+#     u_t = u_train[idx, :].reshape(1, -1)            
+#     y_t = y_train[idx].reshape(1, 1)                
     
-    # update data
-    u_obs = np.vstack((u_obs, u_t))
-    y_obs = np.vstack((y_obs, y_t))
+#     # update data
+#     u_obs = np.vstack((u_obs, u_t))
+#     y_obs = np.vstack((y_obs, y_t))
 
-    k_uu = k.K(u_train, u_train)
-    print(np.shape(k_uu))
-    k_unu = k.K(u_train, u_obs)    # (N, n_obs)
-    print(np.shape(k_unu))
-    k_nu = k.K(u_obs, u_obs)       # (n_obs, n_obs)
-    print(np.shape(k_nu))
+#     k_uu = k.K(u_train, u_train)
+#     print(np.shape(k_uu))
+#     k_unu = k.K(u_train, u_obs)    # (N, n_obs)
+#     print(np.shape(k_unu))
+#     k_nu = k.K(u_obs, u_obs)       # (n_obs, n_obs)
+#     print(np.shape(k_nu))
 
-    # invert the observed-observed kernel (k_nu), not k_uu
-    k_nu_inv = np.linalg.inv(k_nu + 1e-6 * np.eye(k_nu.shape[0]))
-    print(np.shape(k_nu_inv))
+#     # invert the observed-observed kernel (k_nu), not k_uu
+#     k_uu_inv = np.linalg.inv(k_uu + 1e-6 * np.eye(k_nu.shape[0]))
+#     print(np.shape(k_uu_inv))
 
-# posterior at the test points u_train given observations (u_obs, y_obs)
-    mu = k_unu @ k_nu_inv @ y_obs          # shape (N, 1)
-    Sigma = k_uu - k_unu @ k_nu_inv @ k_unu.T
+# # posterior at the test points u_train given observations (u_obs, y_obs)
+#     mu = k_unu.T @ k_uu_inv @ y_train         # shape (N, 1)
+#     Cov = k_nu - k_unu.T @ k_uu_inv @ k_unu
 
-    # plot final posterior
+#     # plot final posterior
 
-    indices = np.arange(len(u_train))  
-    indices1.append(idx)
+#     indices = np.arange(len(u_train))  
+#     indices1.append(idx)
 
-    # print('u norm:', u_obs[indices1[-1]])      
-    plt.clf()
-    plt.plot(indices, mu, label="Posterior mean", color='blue')
-    plt.fill_between(indices.ravel(),
-                     (mu - std).ravel(),
-                     (mu + std).ravel(),
-                     alpha=0.2, color='blue', label='±1 std')
-    plt.plot(indices, y_train, 'r--', label="True function")
-    plt.scatter(indices1, y_obs, color='red', marker = 'x', label="Observations") 
-    plt.title("GP-UCB, chosen u:{}".format(idx))
-    plt.legend()
-    plt.pause(0.4)
-plt.savefig('updates.jpeg')
-print('chosen u at time step t = {}'.format(t), u_obs[t])
-plt.figure(figsize = (10, 6))
-x = np.arange(len(indices1))
-plt.plot(x, indices1, marker= 'x', color = 'blue', label ='index of chosen input')
-plt.xlabel('iteration #')
-plt.ylabel('index number')
-plt.grid(True)
-plt.legend()
-plt.savefig('chosen.jpeg')
-gp(Q, u_obs[-1], m, t)
+#     # print('u norm:', u_obs[indices1[-1]])      
+#     plt.clf()
+#     plt.plot(indices, mu, label="Posterior mean", color='blue')
+#     plt.fill_between(indices.ravel(),
+#                      (mu - std).ravel(),
+#                      (mu + std).ravel(),
+#                      alpha=0.2, color='blue', label='±1 std')
+#     plt.plot(indices, y_train, 'r--', label="True function")
+#     plt.scatter(indices1, y_obs, color='red', marker = 'x', label="Observations") 
+#     plt.title("GP-UCB, chosen u:{}".format(idx))
+#     plt.legend()
+#     plt.pause(0.4)
+# plt.savefig('updates.jpeg')
+# print('chosen u at time step t = {}'.format(t), u_obs[t])
+# plt.figure(figsize = (10, 6))
+# x = np.arange(len(indices1))
+# plt.plot(x, indices1, marker= 'x', color = 'blue', label ='index of chosen input')
+# plt.xlabel('iteration #')
+# plt.ylabel('index number')
+# plt.grid(True)
+# plt.legend()
+# plt.savefig('chosen.jpeg')
+# gp(Q, u_obs[-1], m, t)
 
 
 

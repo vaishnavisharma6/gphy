@@ -24,42 +24,48 @@ def dynamics(x, u):
 def true_cost(x, u):
     return float(x.T @ Q @ x + u.T @ R @ u)
 
-# Noisy cost observation
+# Noisy cost
 def observe_cost(x, u):
     noise = np.random.normal(0, 1.0)
     return true_cost(x, u) + noise
 
 # Domain of control inputs
-U = np.linspace(-5, 5, 500)[:, None]
+U = np.linspace(-5, 5, 100)[:, None]
+S = np.linspace(-5, 5, 100)[:, None]
+U_grid, S_grid = np.meshgrid(U, S)
+
+X = np.column_stack([U_grid.ravel(), S_grid.ravel()])
 
 # GP setup
-kernel = GPy.kern.RBF(input_dim=1, variance=1.0, lengthscale=0.3)
+kernel = GPy.kern.RBF(input_dim=2, variance=1.0, lengthscale=0.3)
 beta = 0.5  # UCB parameter
 
 # Storage
-xu = np.empty((0,1))  # actions tried
+x = np.empty((0,1)) 
 yu = np.empty((0,1))  # cost observed
 
+XU = np.empty((0,2)) #for input
+
 # Initial state
-x0 = np.array([[1.0]])
-x_opt = [1.0]
-cost_opt = []
+x0 = np.array([[0]])
+# x_opt = [1.0]
+# cost_opt = []
 cum_cost = [0]
 total = 0
 plt.figure(figsize=(10,6))
-N = 100
+N = 10
 for t in range(N):
     if t == 0:
         # No data: sample random action
-        ut = np.array([[np.random.uniform(-2, 2)]])
+        ut = np.array([[np.random.uniform(-5, 5)]])
     else:
         # Fit GP
-        model = GPy.models.GPRegression(xu, yu, kernel)
+        model = GPy.models.GPRegression(XU, yu, kernel)
         model.Gaussian_noise.variance = 0.01
         model.Gaussian_noise.variance.fix()
 
         # Predict over domain
-        mu, var = model.predict(U)
+        mu, var = model.predict(row)
         std = np.sqrt(var)
         ucb = mu - np.sqrt(beta) * std  # minimize cost
 
@@ -67,25 +73,25 @@ for t in range(N):
         idx = np.argmin(ucb)
         ut = U[idx]
 
-  
     
+    row = np.array([float(x0), float(ut)])
+    row = row[None, :]
+    print(np.shape(row))
     # Observe cost
     ct = observe_cost(x0, ut)
     total = ct + total
     cum_cost.append(total)
-    # xnext = dynamics(x0, ut)
-    # x0 = xnext   
+    xnext = dynamics(x0, ut)
+    x0 = xnext   
     
+
+    
+  
     # Update data
-    xu = np.vstack((xu, ut.reshape(1,1)))
+    XU = np.vstack((XU, row))
     yu = np.vstack((yu, np.array([[ct]]))) 
     
-    u_opt = -K @ np.array([[x_opt[-1]]])
-    cost = x_opt[-1]**2 * Q[0,0] + u_opt[0,0]**2 * R[0,0]
-    cost_opt.append(cost)
-    x_next = A @ np.array([[x_opt[-1]]]) + B @ u_opt
-    x_opt.append(float(x_next[0]))
-
+  
 
     # Plot GP
     if t > 0:
@@ -104,16 +110,16 @@ for t in range(N):
         plt.ylabel('Cost')
         plt.legend()
         plt.grid(True)
-        plt.pause(0.4)
+        plt.pause(0.9)
 
     plt.savefig('gp_ucb_lqr.png')
 
 plt.figure(figsize = (10,6))
 T = np.arange(0, len(yu))
 T1 = np.arange(0, len(cum_cost))
-plt.plot(T, yu, color = 'red')
+plt.semilogy(T, yu, color = 'red')
 # plt.plot(T, cost_opt, color = 'blue')
-plt.plot(T1, cum_cost, color = 'green')
+# plt.plot(T1, cum_cost, color = 'green')
 plt.pause(0.4)
 plt.savefig('cost.jpeg')
 
