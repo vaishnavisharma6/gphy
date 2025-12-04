@@ -37,10 +37,10 @@ def opt(t, x1, x2,x3, x4,  x_f, epsilon, u_n, u_norms, uc_norms, udet_norms, sta
     # Plot input norm on the same figure (secondary y-axis)
     plt.figure(figsize = (10, 6))
 
-    plt.semilogy(range(1, t+1), u_n, 'k--s', label='second order')
-    plt.semilogy(range(1, t+1), u_norms, marker='o', linewidth=2, label ='epsilon sd')
-    plt.semilogy(range(1, t+1), uc_norms, marker ='x', color = 'red', label='chebyshev')
-    plt.semilogy(range(1, t+1), udet_norms, marker = 'o', color = 'green', label ='deterministic')
+    plt.plot(range(1, t+1), u_n, 'k--s', label='second order')
+    plt.plot(range(1, t+1), u_norms, marker='o', linewidth=2, label ='epsilon sd')
+    plt.plot(range(1, t+1), uc_norms, marker ='x', color = 'red', label='chebyshev')
+    plt.plot(range(1, t+1), udet_norms, marker = 'o', color = 'green', label ='deterministic')
 
     plt.xlabel('time step')
     plt.ylabel('u-norm')

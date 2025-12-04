@@ -12,15 +12,15 @@ from plot import opt, diff
 
 #----------------------------------------------------------------------------------------
 # fixed system parameters
-n, m = 2, 2
-x_0 = np.array([0.0, 0.0])
+n, m = 2, 6
+x_0 = np.array([0.2, 0.0])
 
 T_list = range(1, 30)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
 epsilon = 0.9
 delta = 0.9
-Q = np.diag([2.0, 1.0])
+Q = np.diag([2.0, 3.0, 4.0, 5.0, 0.1, 0.2])
 q = norm.ppf(1 - delta)
 u_norm_diff_list = []
 state_dev_diff_list = []
@@ -33,7 +33,7 @@ os.makedirs(norm_folder, exist_ok=True)
 os.makedirs(state_folder, exist_ok=True)
 os.makedirs(diff_folder, exist_ok=True)
 for t in T_list:
-    A,B, NT = get_system(name, n=2, m=2, T = t, seed=2)
+    A,B, NT = get_system(name, n, m, t, seed=2)
     U = np.random.randn(m * t, 1)
 
         # Compute reachable final state
@@ -130,36 +130,4 @@ diff(T_list, u_norm_diff_list, state_dev_diff_list, diff_folder)   #plot diffs
 
 
 
-  # --- Exact constraint ---
-    # def exact_lhs_and_grad(u_flat):
-    #     y = C_T @ u_flat + b
-    #     qy = float(y.T @ (sigma_z @ y))
-    #     s = max(1e-12, tau + 4.0 * qy)
-    #     lhs = float(y.T @ y) + traceSigma + q * math.sqrt(s)
-    #     grad = 2 * (C_T.T @ y) + q * (4 / math.sqrt(s)) * (C_T.T @ (sigma_z @ y))
-    #     return lhs, grad
-
-    # def objective(u_flat):
-    #     val = float(u_flat @ (Q_tilde @ u_flat))
-    #     grad = 2 * (Q_tilde @ u_flat)
-    #     return val, grad
-
-    # def constraint_fun(u_flat):
-    #     lhs, _ = exact_lhs_and_grad(u_flat)
-    #     return epsilon**2 - lhs
-
-    # def constraint_jac(u_flat):
-    #     _, grad_lhs = exact_lhs_and_grad(u_flat)
-    #     return -grad_lhs
-
-    # u0 = np.zeros(m*t)
-    # nonlin_cons = {'type': 'ineq', 'fun': constraint_fun, 'jac': constraint_jac}
-    # res = minimize(lambda u: objective(u)[0], u0, jac=lambda u: objective(u)[1],
-    #                constraints=[nonlin_cons],
-    #                options={'maxiter': 500, 'ftol': 1e-8})
-
-    # if not res.success:
-    #     print(f"Exact solver failed at T={t}: {res.message}")
-    #     continue
-
-    # u_exact = res.x
+ 
