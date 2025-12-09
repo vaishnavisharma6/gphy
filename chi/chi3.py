@@ -9,6 +9,9 @@ import math
 import os
 from datagen import get_system
 from plot import opt, diff
+from scipy.integrate import quad
+from scipy.stats import chi2
+from scipy.stats import norm
 
 #----------------------------------------------------------------------------------------
 # fixed system parameters
@@ -128,6 +131,95 @@ diff(T_list, u_norm_diff_list, state_dev_diff_list, diff_folder)   #plot diffs
 
 
 
+#cdf of GCS using imhof's method and satterthwaite and their comparison
 
 
- 
+def imhof_cdf(x, lambdas, mus):
+    lambdas = np.array(lambdas, dtype=float)
+    if mus is None:
+        mus = np.zeros_like(lambdas)
+    else:
+        mus = np.array(mus, dtype=float)
+
+    def phi_Q(t):
+        # characteristic function of quadratic form
+        denom = 1 - 2j * t * lambdas
+        term1 = denom ** (-0.5)
+        term2 = np.exp(1j * t * lambdas * mus**2 / denom)
+        return np.prod(term1 * term2)
+
+    def integrand(t):
+        return np.imag(np.exp(-1j * t * x) * phi_Q(t) / t)
+
+    # numerical integration 0..∞ (truncated with an upper tail)
+    integral, _ = quad(integrand, 0, 50, limit=500)
+    return 0.5 - integral / np.pi
+
+
+def satterthwaite_cdf(x, lambdas, mus):
+    lambdas = np.array(lambdas, float)
+
+    if mus is None:
+        mus = np.zeros_like(lambdas)
+    else:
+        mus = np.array(mus, float)
+
+    # Compute mean and variance
+    mean = np.sum(lambdas * (1 + mus**2))
+    var  = np.sum(2 * lambdas**2 * (1 + 2 * mus**2))
+
+    # Satterthwaite parameters
+    nu = 2 * mean**2 / var
+    a  = mean / nu
+
+    # Approximate CDF
+    return chi2.cdf(x / a, df=nu)
+
+t = 4
+
+
+def para(t):
+    w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*0.1)
+    A,B, C_T = get_system(name, n, m, t, seed=2)
+    N_T = np.eye(n)
+    for i in range(1, t):
+            N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
+    u = np.random.randn(m * t, 1)     
+    mu_z = (C_T @ u) + (np.linalg.matrix_power(A, t) @ x_0) - x_f
+    sigma_w = np.eye(n*t) * 0.1
+    sigma_z = np.linalg.matrix_power(A, t) @ sigma_0 @ np.linalg.matrix_power(A, t).T + N_T @ sigma_w @ N_T.T
+    mu_q = np.trace(sigma_z) + mu_z.T @ mu_z
+    sigma_q = 2* np.trace(sigma_z @ sigma_z) + 4* mu_z.T @ sigma_z @ mu_z
+    print(np.shape(mu_q))
+    print(np.shape(sigma_q))
+    return(sigma_z, mu_z, mu_q, sigma_q)
+
+
+
+x = np.linspace(0, 100, 1000)
+
+plt.figure(figsize = (10, 6))
+for t in range(1, 5):
+    im = []
+    st = []
+    no = []
+    sigma_z, mu_z, mu_q, sigma_q = para(t)
+    eigvals, eigvecs = np.linalg.eigh(sigma_z)
+    lamdas = eigvals
+    mus = np.diag(1 / np.sqrt(eigvals)) @ eigvecs.T @ mu_z
+    for i in x:
+        cdf1 = imhof_cdf(i, lamdas, mus)
+        im.append(cdf1)
+        cdf2 = satterthwaite_cdf(i, lamdas, mus)
+        st.append(cdf2)
+        cdf3 = norm.cdf(i, loc = mu_q, scale = np.sqrt(sigma_q))
+        no.append(cdf3)
+    plt.plot(x, im, label = 'imhof_{}'.format(t))
+    plt.plot(x, st, label = 'satterthwaite_{}'.format(t))
+    plt.plot(x, no, label = 'normal_{}'.format(t))
+    plt.xlabel('x')
+    plt.ylabel('cdf value')
+    plt.legend()
+    plt.savefig('cdf.jpeg')
+
+
