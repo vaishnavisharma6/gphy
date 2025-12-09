@@ -51,16 +51,22 @@ k = GPy.kern.RBF(1, variance = 1., lengthscale = 50)
 algo = gp_ucb(X)
 X_obs = []
 Y_obs = []
+reg = []
 mean, cov = algo.initialize(k)
 print(mean)
+yb = algo.cost(100)
 plt.figure(figsize = (10, 6))
-for t in range(0,40):
+sr = 0
+for t in range(0,30):
     x = algo.sample(mean, cov)
     X_obs.append(x)
     y = algo.cost(x)
     Y_obs.append(y)
+    regret = yb - y
+    sr = sr + regret
+    reg.append(sr)
     mean, cov = algo.updation(np.array(Y_obs), np.array(X_obs))
-    plt.fill_between(X[:,0], mean[:, 0] - 1.96*np.sqrt(np.diag(cov)), mean[:, 0] + 1.96*np.sqrt(np.diag(cov)), alpha=0.2, color='blue')
+    plt.fill_between(X[:,0], mean[:, 0] - 1*np.sqrt(np.diag(cov)), mean[:, 0] + 1*np.sqrt(np.diag(cov)), alpha=0.2, color='blue')
     plt.plot(X, mean, color = 'blue')
     plt.scatter(X_obs, Y_obs, color ='black')
     plt.xlabel('X')
@@ -69,4 +75,8 @@ for t in range(0,40):
     plt.pause(0.4)
 plt.savefig('gp_ucb.jpeg')
     
-
+plt.figure(figsize=(10, 6))
+N = np.arange(0, len(reg))
+plt.plot(N, reg, label = 'regret')
+plt.legend()
+plt.savefig('regret.jpeg')
