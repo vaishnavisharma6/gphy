@@ -34,7 +34,7 @@ class gp_ucb:
         return(x)
 
     def cost(self, x):
-        c = 3*x**3 + 2
+        c = 3*x**2 + 2 
         w = np.random.normal()
         y = c + w
         return(y)
@@ -46,22 +46,21 @@ class gp_ucb:
             
             return(mean, cov)
 
-X = np.linspace(-10, 100, 1000)[:, None]
-k = GPy.kern.RBF(1, variance = 1., lengthscale = 20)
+X = np.linspace(0, 100, 1000)[:, None]
+k = GPy.kern.RBF(1, variance = 1., lengthscale = 50)
 algo = gp_ucb(X)
 X_obs = []
 Y_obs = []
 mean, cov = algo.initialize(k)
 print(mean)
 plt.figure(figsize = (10, 6))
-for t in range(0,20):
+for t in range(0,40):
     x = algo.sample(mean, cov)
     X_obs.append(x)
     y = algo.cost(x)
     Y_obs.append(y)
     mean, cov = algo.updation(np.array(Y_obs), np.array(X_obs))
-    print(np.sqrt(np.diag(cov)))
-    plt.fill_between(X[:,0], mean[:, 0] - 1*np.sqrt(np.diag(cov)), mean[:, 0] + 1*np.sqrt(np.diag(cov)), alpha=0.2, color='blue', label='±2 std')
+    plt.fill_between(X[:,0], mean[:, 0] - 1.96*np.sqrt(np.diag(cov)), mean[:, 0] + 1.96*np.sqrt(np.diag(cov)), alpha=0.2, color='blue')
     plt.plot(X, mean, color = 'blue')
     plt.scatter(X_obs, Y_obs, color ='black')
     plt.xlabel('X')
