@@ -18,3 +18,8 @@ U_grid, S_grid = np.meshgrid(U, S)
 
 points = np.column_stack([U_grid.ravel(), S_grid.ravel()])
 print(points)
+
+x = np.linspace(-10, 100, 1000)
+y = 3* x**3 + 2
+plt.plot(x, y)
+plt.show()

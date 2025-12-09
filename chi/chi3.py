@@ -15,7 +15,7 @@ from scipy.stats import norm
 
 #----------------------------------------------------------------------------------------
 # fixed system parameters
-n, m = 2, 6
+n, m = 2, 2
 x_0 = np.array([0.2, 0.0])
 
 T_list = range(1, 30)  
@@ -23,7 +23,7 @@ sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
 epsilon = 0.9
 delta = 0.9
-Q = np.diag([2.0, 3.0, 4.0, 5.0, 0.1, 0.2])
+Q = np.diag([2.0, 3.0])
 q = norm.ppf(1 - delta)
 u_norm_diff_list = []
 state_dev_diff_list = []
@@ -187,7 +187,7 @@ def para(t):
     u = np.random.randn(m * t, 1)     
     mu_z = (C_T @ u) + (np.linalg.matrix_power(A, t) @ x_0) - x_f
     sigma_w = np.eye(n*t) * 0.1
-    sigma_z = np.linalg.matrix_power(A, t) @ sigma_0 @ np.linalg.matrix_power(A, t).T + N_T @ sigma_w @ N_T.T
+    sigma_z = N_T @ sigma_w @ N_T.T
     mu_q = np.trace(sigma_z) + mu_z.T @ mu_z
     sigma_q = 2* np.trace(sigma_z @ sigma_z) + 4* mu_z.T @ sigma_z @ mu_z
     print(np.shape(mu_q))
