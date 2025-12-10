@@ -12,6 +12,7 @@ from plot import opt, diff
 from scipy.integrate import quad
 from scipy.stats import chi2
 from scipy.stats import norm
+import GPy
 
 #----------------------------------------------------------------------------------------
 # fixed system parameters
@@ -188,11 +189,9 @@ def para(t):
     mu_z = (C_T @ u) + (np.linalg.matrix_power(A, t) @ x_0) - x_f
     sigma_w = np.eye(n*t) * 0.1
     sigma_z = N_T @ sigma_w @ N_T.T
-    mu_q = np.trace(sigma_z) + mu_z.T @ mu_z
-    sigma_q = 2* np.trace(sigma_z @ sigma_z) + 4* mu_z.T @ sigma_z @ mu_z
-    print(np.shape(mu_q))
-    print(np.shape(sigma_q))
-    return(sigma_z, mu_z, mu_q, sigma_q)
+  
+
+    return(sigma_z, mu_z)
 
 
 
@@ -203,7 +202,7 @@ for t in range(1, 5):
     im = []
     st = []
     no = []
-    sigma_z, mu_z, mu_q, sigma_q = para(t)
+    sigma_z, mu_z = para(t)
     eigvals, eigvecs = np.linalg.eigh(sigma_z)
     lamdas = eigvals
     mus = np.diag(1 / np.sqrt(eigvals)) @ eigvecs.T @ mu_z
@@ -212,11 +211,11 @@ for t in range(1, 5):
         im.append(cdf1)
         cdf2 = satterthwaite_cdf(i, lamdas, mus)
         st.append(cdf2)
-        cdf3 = norm.cdf(i, loc = mu_q, scale = np.sqrt(sigma_q))
-        no.append(cdf3)
+      
+     
     plt.plot(x, im, label = 'imhof_{}'.format(t))
     plt.plot(x, st, label = 'satterthwaite_{}'.format(t))
-    plt.plot(x, no, label = 'normal_{}'.format(t))
+
     plt.xlabel('x')
     plt.ylabel('cdf value')
     plt.legend()
