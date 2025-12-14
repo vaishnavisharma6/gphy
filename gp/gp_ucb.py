@@ -105,7 +105,7 @@ print(alpha)
 k = GPy.kern.RBF(m*T)
 dev = []
 norm = []
-for j in range(20, 80, 10):
+for j in range(100, 500, 100):
     X =  sample_u(CT, b, alpha, j) # set of inputs from constraint (only change)
     
     algo = gp_ucb(X)
@@ -151,4 +151,91 @@ plt.legend()
 plt.savefig('norm vs sample_size.jpeg')
 
 
-# 
+# iterative constraint
+
+
+#physics incorporated (unknown cost, unknown model)
+
+class gphy:
+    def __init__(self, domain):
+        self.X = domain
+    
+    def initialize(self, k):
+        pr_mean = np.zeros((len(self.X), 1))
+        pr_cov = k.K(self.X, self.X)
+        return(pr_mean, pr_cov)
+    
+    def phy(self, states, yk):
+        x_0 = states[0]
+        x_f = states[1]
+        x_k = states[2]
+        x_kn = states[3]
+        gamma = 0.3
+        l = 0.4
+        sk = (gamma * np.linalg.norm(x_kn - x_k)/np.linalg.norm(x_f - x_0)) + (np.linalg.norm(x_f - x_kn)/np.linalg.norm(x_f - x_0))
+        s = -1*yk + l * sk
+        return(s)
+         
+        
+    
+    def sample(self, mean, cov):
+        beta = 0.5
+        var = np.diag(cov).reshape(-1, 1)
+        score = -1*mean + (beta**0.5 * var)
+        # print(np.shape(score))
+        max_indices = np.where(score == score.max())[0]
+        i = np.random.choice(max_indices)
+        print(i)
+        x = self.X[i]
+        return(x, i)
+
+    def cost(self, Q, x, T):
+        Q_tilde = block_diag(*([Q] * T))
+        x = x.reshape(-1,1)
+        c = np.transpose(x) @ Q_tilde @ x
+        w = np.random.normal()
+        y = c + w
+        return(y.flatten())
+    
+
+    def updation(self, Y_obs, X_obs):
+            mean =  k.K(self.X, X_obs) @ np.linalg.inv(k.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ Y_obs
+            cov = k.K(self.X, self.X) - k.K(self.X, X_obs) @ np.linalg.inv(k.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ k.K(X_obs, self.X)
+            print(np.shape(mean))
+            print(np.shape(cov))
+            return(mean, cov)
+
+
+U = np.random.randn(100, m)
+k = GPy.kern.RBF(m)
+dev1 = []
+norm = []
+mean, cov = algo.initialize(k)
+states = []
+U_obs = []
+Y_obs = []
+xk = x_0
+cstates = [x_0, x_f]
+for i in range(0, T):
+    states = []
+    uk, i = algo.sample(mean, cov)
+    yk = algo.cost(Q, uk, T)
+    wk = np.random.normal()
+    xkn = A @ xk + B @ uk + wk
+    states.append(xk, xkn)
+    xk = xkn
+    s = algo.phy(states, yk)
+    Y_obs.append(s)
+    U_obs.append(u)
+    mean, cov = algo.updation(Y_obs, U_obs)
+    plt.fill_between(N, mean[:, 0] - 1*np.sqrt(np.diag(cov)), mean[:, 0] + 1*np.sqrt(np.diag(cov)), alpha=0.2, color='blue')
+    plt.plot(N, mean, color = 'red')
+    plt.scatter(indices, Y_obs, color ='black')
+    plt.xlabel('X')
+    plt.ylabel('Mean function')
+    plt.legend()
+    plt.pause(0.4)
+    plt.savefig('gp_ucb.jpeg')
+
+
+
