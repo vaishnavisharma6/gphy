@@ -5,9 +5,9 @@ import os
 from datagen import get_system
 
 n,m = 2,2
-x_0 = np.array([0.2, 0.0])
+x_0 = np.array([0.0, 0.0])
 
-T = 4
+T = 2
 sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
@@ -23,16 +23,17 @@ x_f = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ u
 x_f =  x_f.reshape(-1)
 
 N_T = np.eye(n)
-
+w = np.random.randn(n*T)
 for i in range(1, T):
      N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
 b = np.linalg.matrix_power(A, T)@x_0 - x_f     
-
+x = x_f - N_T @ w
 AT = np.linalg.matrix_power(A, T)
 u_det = np.linalg.pinv(CT) @(x_f - AT@x_0)
-
+u_sd = np.linalg.pinv(CT) @ (x - AT@ x_0)
 u_det = u_det.reshape(T,m)
-
+u_sd = u_sd.reshape(T, m)
+w = w.reshape(T, n)
 xp = x_0
 xpd = xp
 xps = xp
@@ -41,27 +42,31 @@ s = []
 rng = np.random.default_rng()
 #compute state trajectory
 plt.figure(figsize = (10,6))
-plt.scatter(x_f[0], x_f[1], label = 'desired_state')
-for j in range(0,1000):
+plt.scatter(x_f[0], x_f[1], label = 'desired_state', marker = 'x', color = 'red')
+for j in range(0,1):
     d = []
     s = []
     d = [x_0]
+    sd = [x_0]
     s = [x_0]
     for i in range(0, T):
-        w = rng.normal()
-        print(w)
-        xnd = A @ xpd + B @ u_det[i]
-        d.append(xnd.reshape(-1))
-        xs = A @ xps + B @ u_det[i] + w
-        s.append(xs.reshape(-1))
-        xpd = xnd
-        xps = xs
+        # xnd = A @ xpd + B @ u_det[i]
+        # d.append(xnd.reshape(-1))
+        # xs = A @ xps + B @ u_det[i] + w[i]
+        xsd = A @xps + B @ u_sd[i] + w[i]
+        # s.append(xs.reshape(-1))
+        sd.append(xsd.reshape(-1))
+        # xpd = xnd
+        xps = xsd
 
     d = np.array(d)
     s = np.array(s)
+    sd = np.array(sd)
     
-    plt.scatter(d[-1,0], d[-1, 1], marker = 'x')
-    plt.scatter(s[-1,0], s[-1, 1], marker = 'o')
-
+    # plt.scatter(d[-1,0], d[-1, 1], marker = 'x')
+    # plt.scatter(s[-1,0], s[-1, 1], marker = 'o')
+    
+    plt.scatter(sd[:,0], sd[:,1], marker = 'x', color = 'yellow')
+    plt.scatter(x[0], x[1], color = 'blue')
     plt.legend()
 plt.savefig('traj.jpeg')     
