@@ -17,9 +17,9 @@ import GPy
 #----------------------------------------------------------------------------------------
 # fixed system parameters
 n, m = 2, 2
-x_0 = np.array([0.2, 0.0])
+x_0 = np.array([0.0, 0.0])
 
-T_list = range(1, 30)  
+T_list = range(1, 50)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
 epsilon = 0.9
@@ -36,6 +36,17 @@ diff_folder = 'diffs_{}'.format(name)
 os.makedirs(norm_folder, exist_ok=True)
 os.makedirs(state_folder, exist_ok=True)
 os.makedirs(diff_folder, exist_ok=True)
+chebd = []
+secd = []
+epd = []
+firstd = []
+modeld = []
+
+chebu = []
+secu = []
+epu = []
+firstu = []
+modelu = []
 for t in T_list:
     A,B, NT = get_system(name, n, m, t, seed=2)
     U = np.random.randn(m * t, 1)
@@ -88,6 +99,10 @@ for t in T_list:
     u_c2 = u2.value #chebyshev
     u_c3 = u3.value #epsilon sd
     u_c4 = u4.value 
+    w = np.random.randn(n*t)
+    x = x_f - N_T @ w
+    AT = np.linalg.matrix_power(A, t)
+    u_model =  np.linalg.pinv(C_T) @ (x - AT@ x_0)
     if u_convex is None:
         print(f"Convex solver failed at T={t}")
         continue
@@ -105,16 +120,34 @@ for t in T_list:
     x2 = np.array(x_0).reshape(n,1)
     x3 = np.array(x_0).reshape(n,1)
     x4 = np.array(x_0).reshape(n,1)
+    x5 = np.array(x_0).reshape(n,1)
     for i in range(t):
         x1 = np.hstack((x1, A @ x1[:, -1:] + B @ u_convex[m*i:m*(i+1)].reshape(m,1) + w.reshape(n,1)))  #second order
         x2 = np.hstack((x2, A @ x2[:, -1:] + B @ u_c2[m*i:m*(i+1)].reshape(m,1) + w.reshape(n,1)))  # chebyshev
         x3 = np.hstack((x3, A @ x3[:, -1:] + B @ u_c3[m*i:m*(i+1)].reshape(m,1) + w.reshape(n,1))) #epsilon sd
         x4 = np.hstack((x4, A @ x4[:, -1:] + B @ u_c4[m*i:m*(i+1)].reshape(m,1) + w.reshape(n,1)))
+        x5 = np.hstack((x5, A @ x5[:, -1:] + B @ u_model[m*i:m*(i+1)].reshape(m,1)+w.reshape(n,1)))
     # --- Record metrics ---
-    u_norm_diff = np.linalg.norm(u_c3) - np.linalg.norm(u_convex)
-    state_dev_diff = np.linalg.norm(x2[:, -1] - x1[:, -1])
-    u_norm_diff_list.append(u_norm_diff)
-    state_dev_diff_list.append(state_dev_diff)
+    cheb_norm = u_c2.T @ Q_tilde @ u_c2
+    ep_norm = u_c3.T @ Q_tilde @ u_c3
+    sec_norm = u_convex.T @ Q_tilde @ u_convex
+    det_norm = u_c4.T @ Q_tilde @ u_c4
+    model_norm = u_model.T @ Q_tilde @ u_model
+    # u_norm_diff = np.linalg.norm(u_c3) - np.linalg.norm(u_convex)
+ 
+    cheb_dev = np.linalg.norm(x2[:, -1] - x_f)
+    ep_dev = np.linalg.norm(x3[:, -1] - x_f)
+    sec_dev = np.linalg.norm(x1[:, -1]- x_f)
+    det_dev = np.linalg.norm(x4[:, -1]-x_f)
+    model_dev = np.linalg.norm(x5[:, -1]-x_f)
+    chebd.append(cheb_dev)
+    epd.append(ep_dev)
+    secd.append(sec_dev)
+    firstd.append(det_dev)
+    modeld.append(model_dev)
+    # state_dev_diff = np.linalg.norm(x2[:, -1] - x1[:, -1])
+    # u_norm_diff_list.append(u_norm_diff)
+    # state_dev_diff_list.append(state_dev_diff)
     u_opt = u.value.reshape(t, m)
     u_n = np.linalg.norm(u_opt, axis = 1) #second order
     U = u_c3.reshape(t, m)
@@ -123,12 +156,47 @@ for t in T_list:
     uc_norms = np.linalg.norm(u_cheb, axis = 1) #chebyshev
     u_det = u_c4.reshape(t, m)
     udet_norms = np.linalg.norm(u_det, axis = 1)
+
+
+
+    chebu.append(cheb_norm)
+    epu.append(ep_norm)
+    secu.append(sec_norm)
+    firstu.append(det_norm)
+    modelu.append(model_norm)
+
+    
     
    
-    opt(t, x1, x2, x3, x4, x_f, epsilon, u_n, u_norms, uc_norms, udet_norms, state_folder, norm_folder) #plot states, norms
+    # opt(t, x1, x2, x3, x4, x_f, epsilon, u_n, u_norms, uc_norms, udet_norms, state_folder, norm_folder) #plot state dev, norms
     
 
-diff(T_list, u_norm_diff_list, state_dev_diff_list, diff_folder)   #plot diffs
+# diff(T_list, u_norm_diff_list, state_dev_diff_list, diff_folder)   #plot diffs
+
+plt.figure(figsize = (10,6))
+N = np.arange(0, len(epd))
+plt.semilogy(N, chebd, label = 'chebyshev state dev')
+plt.semilogy(N, epd, label = 'epsilon state dev')
+plt.semilogy(N, secd, label = 'second order dev')
+plt.semilogy(N, firstd, label = 'det state dev')
+plt.semilogy(N, modeld, label = 'model state dev')
+plt.xlabel('time horizon')
+plt.ylabel('State deviation')
+plt.title('log(state deviation)')
+plt.legend()
+plt.savefig('dev-T.jpeg')
+
+plt.figure(figsize = (10,6))
+N = np.arange(0, len(chebu))
+plt.plot(N, chebu, label = 'cheby norm')
+plt.plot(N, epu, label = 'epsilon norm')
+plt.plot(N, secu, label = 'second order norm')
+plt.plot(N, firstu, label = 'first order norm')
+plt.plot(N, modelu, label = 'model norm')
+plt.xlabel('time horizon')
+plt.ylabel('u* norms')
+plt.legend()
+plt.savefig('norm-T.jpeg')
 
 
 
