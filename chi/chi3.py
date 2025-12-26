@@ -20,7 +20,7 @@ import GPy
 n, m = 2, 2
 x_0 = np.array([0.0, 0.0])
 
-T_list = range(1, 20)  
+T_list = range(1, 40)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
 delta = 0.99
@@ -34,7 +34,7 @@ state_folder = 'states_{}'.format(name)
 diff_folder = 'diffs_{}'.format(name)
 
 delta_folder = 'traj_{}'.format(delta)
-epsilon = 0.4
+epsilon = 0.85
 os.makedirs(norm_folder, exist_ok=True)
 os.makedirs(state_folder, exist_ok=True)
 os.makedirs(diff_folder, exist_ok=True)
@@ -98,7 +98,7 @@ for t in T_list:
     u3 = cp.Variable(m*t)
     u4 = cp.Variable(m*t)
     Q_tilde = block_diag(*([Q] * t))
-    # objective = cp.Minimize(cp.quad_form(u, Q_tilde))
+    objective = cp.Minimize(cp.quad_form(u, Q_tilde))
     objective2 = cp.Minimize(cp.quad_form(u2, Q_tilde))
     objective3 = cp.Minimize(cp.quad_form(u3, Q_tilde))
     objective4 = cp.Minimize(cp.quad_form(u4, Q_tilde))
@@ -106,20 +106,20 @@ for t in T_list:
     f2 = cp.quad_form(C_T @ u2 + b, np.eye(C_T.shape[0]))
     f3 = cp.quad_form(C_T @ u3 + b, np.linalg.inv(sigma_z))
     f4 = C_T @ u4 + b
-    # prob = cp.Problem(objective, [f <= gamma])
+    prob = cp.Problem(objective, [f <= gamma])
     prob2 = cp.Problem(objective2, [f2 <= r_cheb])
     prob3 = cp.Problem(objective3, [f3 <= dev])
     prob4 = cp.Problem(objective4, [f4 == 0])
-    # prob.solve(solver=cp.SCS, verbose=False)
+    prob.solve(solver=cp.SCS, verbose=False)
     prob2.solve(solver = cp.SCS, verbose = False)
     prob3.solve(solver = cp.SCS, verbose = False)
     prob4.solve(solver = cp.SCS, verbose = False)
-    # u_convex = u.value  #second order
+    u_convex = u.value  #second order
     u_c2 = u2.value #chebyshev
     u_c3 = u3.value #epsilon sd
     u_c4 = u4.value # first order
     print('RHS, 2nd order:', gamma)
-    # print('residue 2nd order:', (C_T @ u_convex + b).T @ (C_T @ u_convex + b))
+    print('residue 2nd order:', (C_T @ u_convex + b).T @ (C_T @ u_convex + b))
     print('RHS, chebyshev:', r_cheb)
     print('residue, chebyshev:', (C_T @ u_c2 + b).T @ (C_T @ u_c2 + b))
     print('RHS, epsilon sd:', dev)
@@ -128,9 +128,9 @@ for t in T_list:
     x = x_f - N_T @ w
     AT = np.linalg.matrix_power(A, t)
     u_model =  np.linalg.pinv(C_T) @ (x - AT@ x_0)
-    # if u_convex is None:
-        # print(f"Convex solver failed at T={t}")
-        # continue
+    if u_convex is None:
+        print(f"Convex solver failed at T={t}")
+        continue
     if u_c2 is None:
         print(f"Convex solver failed at T={t}")
         continue
@@ -153,25 +153,25 @@ for t in T_list:
     s4 = []
     for j in range(0, 5000):
         w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*0.1)
-        # x1T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_convex + N_T @ w  # second order
+        x1T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_convex + N_T @ w  # second order
         x2T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c2 + N_T @ w  # chebyshev
         x3T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c3 + N_T @ w  # epsilon 
         x4T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c4 + N_T @ w
-        # x1.append(np.linalg.norm(x1T-x_f))
+        x1.append(np.linalg.norm(x1T-x_f))
         x2.append(np.linalg.norm(x2T-x_f))
         x3.append(np.linalg.norm(x3T-x_f))
         x4.append(np.linalg.norm(x4T - x_f))
-        # s1.append(x1T)
+        s1.append(x1T)
         s2.append(x2T)
         s3.append(x3T)
         s4.append(x4T)
     
-    # x1_dev.append(np.average(x1))
+    x1_dev.append(np.average(x1))
     x2_dev.append(np.average(x2))
     x3_dev.append(np.average(x3))
     x4_dev.append(np.average(x4))
    
-    # s1 = np.array(s1)
+    s1 = np.array(s1)
     s2 = np.array(s2)
     s3 = np.array(s3)
     s4 = np.array(s4)
@@ -179,7 +179,7 @@ for t in T_list:
     # --- Record metrics ---
     cheb_norm = u_c2.T @ Q_tilde @ u_c2
     ep_norm = u_c3.T @ Q_tilde @ u_c3
-    # sec_norm = u_convex.T @ Q_tilde @ u_convex
+    sec_norm = u_convex.T @ Q_tilde @ u_convex
     det_norm = u_c4.T @ Q_tilde @ u_c4
     model_norm = u_model.T @ Q_tilde @ u_model
     # u_norm_diff = np.linalg.norm(u_c3) - np.linalg.norm(u_convex)
@@ -188,8 +188,8 @@ for t in T_list:
     # state_dev_diff = np.linalg.norm(x2[:, -1] - x1[:, -1])
     # u_norm_diff_list.append(u_norm_diff)
     # state_dev_diff_list.append(state_dev_diff)
-    # u_opt = u.value.reshape(t, m)
-    # u_n = np.linalg.norm(u_opt, axis = 1) #second order
+    u_opt = u.value.reshape(t, m)
+    u_n = np.linalg.norm(u_opt, axis = 1) #second order
     U = u_c3.reshape(t, m)
     u_norms = np.linalg.norm(U, axis = 1) #epsilon sd
     u_cheb = u2.value.reshape(t, m) 
@@ -201,7 +201,7 @@ for t in T_list:
 
     chebu.append(cheb_norm)
     epu.append(ep_norm)
-    # secu.append(sec_norm)
+    secu.append(sec_norm)
     firstu.append(det_norm)
 
     center = (x_f[0], x_f[1])
@@ -213,18 +213,18 @@ for t in T_list:
 
 
     # modelu.append(model_norm)
-    # filename1 = os.path.join(delta_folder, '2nd-{}-{}.jpeg'.format(delta, t))
-    # plt.figure(figsize = (10,6))
-    # # plt.scatter(s1[:, 0], s1[:, 1], marker = 'x')
-    # plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    # plt.plot(x, y)
-    # plt.scatter(*center)
-    # plt.gca().set_aspect('equal', adjustable='box')
-    # plt.xlabel('x1')
-    # plt.ylabel('x2')
-    # plt.title('2nd order, horizon = {}'.format(t))
-    # plt.legend()
-    # plt.savefig(filename1)
+    filename1 = os.path.join(delta_folder, '2nd-{}-{}.jpeg'.format(delta, t))
+    plt.figure(figsize = (10,6))
+    plt.scatter(s1[:, 0], s1[:, 1], marker = 'x')
+    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
+    plt.plot(x, y)
+    plt.scatter(*center)
+    plt.gca().set_aspect('equal', adjustable='box')
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+    plt.title('2nd order, horizon = {}'.format(t))
+    plt.legend()
+    plt.savefig(filename1)
 
 
     filename2 = os.path.join(delta_folder, 'cheb-{}-{}-{}.jpeg'.format(delta, epsilon, t))
@@ -286,7 +286,7 @@ plt.figure(figsize = (10,6))
 N = np.arange(0, len(x2_dev))
 plt.plot(N, x2_dev, label = 'chebyshev')
 plt.plot(N, x3_dev, label = 'epsilon sd')
-# plt.plot(N, x1_dev, label = '2nd order state dev')
+plt.plot(N, x1_dev, label = '2nd order state dev')
 plt.plot(N, x4_dev, label = 'first order')
 
 # plt.semilogy(N, first_avg, label = 'det state dev')
@@ -301,7 +301,7 @@ plt.figure(figsize = (10,6))
 N = np.arange(0, len(chebu))
 plt.plot(N, chebu, label = 'cheby norm')
 plt.plot(N, epu, label = 'epsilon norm')
-# plt.plot(N, secu, label = 'second order norm')
+plt.plot(N, secu, label = 'second order norm')
 plt.plot(N, firstu, label = 'first order norm')
 # plt.plot(N, modelu, label = 'model norm')
 plt.xlabel('time horizon')
