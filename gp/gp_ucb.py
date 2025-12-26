@@ -78,8 +78,9 @@ Q = np.diag([2.0, 3.0])
 name = 'stable'
 epsilon = 0.1
 delta = 0.9
-# delta_folder = 'traj_{}'.format(delta)
-# os.makedirs(delta_folder, exist_ok = True)
+delta_folder = 'traj_{}'.format(delta)
+idelta_folder = 'traj_{}'.format(delta)
+os.makedirs(delta_folder, exist_ok = True)
 dev = []
 norm = []
 
@@ -117,7 +118,7 @@ for T in T_list:
     Y_obs = []
     indices = []
     mean, cov = algo.initialize(k)
-    # s = []
+    s = []
     for t in range(0,100):
         x, i = algo.sample(mean, cov)
         X_obs.append(x)
@@ -129,32 +130,32 @@ for T in T_list:
     deviation = 0
     sim = 2000
     for t in range(0, sim):
-        w = np.random.normal(size = m*T)
+        w = np.random.normal(size = n*T)
         xT = np.linalg.matrix_power(A, T)@ x_0 + CT @ X[index, :] + N_T @ w
-        # s.append(xT)
+        s.append(xT)
         deviation = deviation + np.linalg.norm(x_f - xT)
     deviation = deviation /sim       
     dev.append(deviation)
     norm.append(np.linalg.norm(X[index]))
-    # s = np.array(s)
-    # filename2 = os.path.join(delta_folder, 'fstate-{}-{}-{}.jpeg'.format(delta, epsilon, T))
-    # plt.figure(figsize = (10,6))
-    # plt.scatter(s[:, 0], s[:, 1], marker = 'x')
-    # plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
+    s = np.array(s)
+    filename2 = os.path.join(delta_folder, 'fstate-{}-{}-{}.jpeg'.format(delta, epsilon, T))
+    plt.figure(figsize = (10,6))
+    plt.scatter(s[:, 0], s[:, 1], marker = 'x')
+    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
    
-    # plt.gca().set_aspect('equal', adjustable='box')
-    # circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
-    #                     fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
-    # plt.gca().add_patch(circle)
-    # plt.xlabel('x1')
-    # plt.ylabel('x2')
-    # plt.title('horizon = {}'.format(T))
-    # plt.legend()
-    # plt.savefig(filename2)
+    plt.gca().set_aspect('equal', adjustable='box')
+    circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
+                        fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
+    plt.gca().add_patch(circle)
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+    plt.title('horizon = {}'.format(T))
+    plt.legend()
+    plt.savefig(filename2)
     
 N = np.arange(0, len(dev))
 plt.figure(figsize = (10,6))
-plt.plot(N, dev)
+plt.plot(N, dev, label = 'offline')
 plt.xlabel('time horizon')
 plt.ylabel('state dev')
 plt.title('avg state deviation')
@@ -163,12 +164,133 @@ plt.savefig('dev-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
 
 
 plt.figure(figsize = (10,6))
-plt.plot(N, norm)
+plt.plot(N, norm, label = 'offline')
 plt.xlabel('time horizon')
 plt.ylabel('u* norm')
 plt.legend()
 plt.savefig('norm-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
     
+
+
+class gp_ucb:
+    def __init__(self, domain):
+        self.X = domain
+    
+    def initialize(self, k):
+        pr_mean = np.zeros((len(self.X), 1))
+        pr_cov = k.K(self.X, self.X)
+        return(pr_mean, pr_cov)
+        
+    
+    def sample(self, mean, cov):
+        beta = 0.5
+        var = np.diag(cov).reshape(-1, 1)
+        score = -1*mean + (beta**0.5 * var)
+        max_indices = np.where(score == score.max())[0]
+        i = np.random.choice(max_indices)
+        x = self.X[i]
+        return(x, i)
+
+    def cost(self, Q, x):
+     
+        x = x.reshape(-1,1)
+        c = np.transpose(x) @ Q @ x
+        w = np.random.normal()
+        y = c + w
+        return(y.flatten())
+    
+
+    def updation(self, Y_obs, X_obs):
+            mean =  k.K(self.X, X_obs) @ np.linalg.inv(k.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ Y_obs
+            cov = k.K(self.X, self.X) - k.K(self.X, X_obs) @ np.linalg.inv(k.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ k.K(X_obs, self.X)
+            return(mean, cov)
+#iterative constraint
+T = range(0, 4)
+x_0 = np.array([0.0, 0.0])
+hor = 4
+A, B, CT = get_system(name, n, m, 1,  seed=0)
+u = np.random.randn(m*hor,1)
+# x_fT = np.linalg.matrix_power(A, hor) @ x_0.reshape(-1, 1) + CT @ u
+# x_fT =  x_fT.reshape(-1)
+ut = np.random.randn(m, 1)
+wt = np.random.normal(n, 1)
+N_T = np.eye(n)
+sigma_w = np.eye(n) * 0.1
+X_obs = []
+Y_obs = []
+final_u = []
+for t in T:
+    x_f = A @ x_0 + B @ ut + wt
+    b = A@x_0 - x_f
+    x_f = x_f.reshape(-1)
+    alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
+    k = GPy.kern.RBF(m)
+    U =  sample_u(CT, b, alpha, 10)
+    x_0 = x_f
+
+    algo = gp_ucb(U)
+   
+
+    mean, cov = algo.initialize(k)
+
+    for t in range(0,100):
+        x, i = algo.sample(mean, cov)
+        X_obs.append(x)
+        y = algo.cost(Q, x)
+   
+        Y_obs.append(y)
+        mean, cov = algo.updation(np.array(Y_obs), np.array(X_obs))
+    final_u.append(x)    
+s = []        
+deviation = 0
+sim = 2000
+x_0 = np.array([0.0, 0.0])
+for t in range(0, sim):
+    w = np.random.normal(size = n*hor)
+    xT = np.linalg.matrix_power(A, hor)@ x_0 + CT @ X[index, :] + N_T @ w
+    s.append(xT)
+    deviation = deviation + np.linalg.norm(x_f - xT)
+deviation = deviation /sim       
+dev.append(deviation)
+norm.append(np.linalg.norm(X[index]))
+s = np.array(s)
+filename3 = os.path.join(idelta_folder, 'ifstate-{}-{}-{}.jpeg'.format(delta, epsilon, T))
+plt.figure(figsize = (10,6))
+plt.scatter(s[:, 0], s[:, 1], marker = 'x')
+plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
+
+plt.gca().set_aspect('equal', adjustable='box')
+circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
+                    fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
+plt.gca().add_patch(circle)
+plt.xlabel('x1')
+plt.ylabel('x2')
+plt.title('horizon = {}'.format(T))
+plt.legend()
+plt.savefig(filename2)
+    
+N = np.arange(0, len(dev))
+plt.figure(figsize = (10,6))
+plt.plot(N, dev, label = 'iterative')
+plt.xlabel('time horizon')
+plt.ylabel('state dev')
+plt.title('avg state deviation')
+plt.legend()
+plt.savefig('idev-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
+
+
+plt.figure(figsize = (10,6))
+plt.plot(N, norm, label = 'iterative')
+plt.xlabel('time horizon')
+plt.ylabel('u* norm')
+plt.legend()
+plt.savefig('inorm-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
+
+    
+
+
+
+
 
 
 
