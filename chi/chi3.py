@@ -60,7 +60,7 @@ x4_dev = []
 
 
 for t in T_list:
-    A,B, NT = get_system(name, n, m, t, seed=2)
+    A,B, NT = get_system(name, n, m, t, seed=0)
     U = np.random.randn(m * t, 1)
 
         # Compute reachable final state

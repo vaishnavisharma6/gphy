@@ -5,9 +5,13 @@ from scipy.linalg import block_diag
 import os
 import sys
 import math
+import matplotlib.patches as patches
+from matplotlib.patches import Circle
 
 from datagen import get_system
 #GP-UCB Class
+
+
 
 def sample_u(CT, b, alpha, n):
     a, d = CT.shape  # C is m x d
@@ -66,19 +70,27 @@ class gp_ucb:
 
 #system parameters
 n,m = 2,2
-x_0 = np.array([0.2, 0.0])
+x_0 = np.array([0.0, 0.0])
 
-T_list  = range(1, 100)
+T_list  = range(1, 20)
 sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
-
+epsilon = 0.1
+delta = 0.9
+# delta_folder = 'traj_{}'.format(delta)
+# os.makedirs(delta_folder, exist_ok = True)
 dev = []
 norm = []
-for T in T_list:
 
-    A, B, CT = get_system(name, n, m, T, seed=2)
+j = 1000
+for T in T_list:
+    A, B, CT = get_system(name, n, m, T,  seed=0)
+
     u = np.random.randn(m*T, 1)
+    # CT = B
+    # for i in range(1, T):
+    #     CT = np.hstack((CT, np.linalg.matrix_power(A, i) @ B)) 
 
     x_f = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ u
     x_f =  x_f.reshape(-1)
@@ -87,20 +99,17 @@ for T in T_list:
 
     for i in range(1, T):
         N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
+
         
     sigma_w = np.eye(n*T) * 0.1
     sigma_z = np.linalg.matrix_power(A, T) @ sigma_0 @ np.linalg.matrix_power(A, T).T + N_T @ sigma_w @ N_T.T
     traceSigma = np.trace(sigma_z)
-    tau = 2 * np.trace(sigma_z @ sigma_z)
-    b = (np.linalg.matrix_power(A, T) @ x_0) - x_f
-    epsilon = 0.5
-    delta = 0.99
+  
     b = np.linalg.matrix_power(A, T)@x_0 - x_f
     alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
     k = GPy.kern.RBF(m*T)
    
-    plt.figure(figsize = (10, 10))
-    j = 2000
+   
     X =  sample_u(CT, b, alpha, j) # set of inputs from constraint (only change)
     
     algo = gp_ucb(X)
@@ -108,10 +117,8 @@ for T in T_list:
     Y_obs = []
     indices = []
     mean, cov = algo.initialize(k)
- 
-
-    N = np.arange(0, np.shape(X)[0])
-    for t in range(0,50):
+    # s = []
+    for t in range(0,100):
         x, i = algo.sample(mean, cov)
         X_obs.append(x)
         y = algo.cost(Q, x, T)
@@ -120,14 +127,30 @@ for T in T_list:
         mean, cov = algo.updation(np.array(Y_obs), np.array(X_obs))
     index = indices[-1]    
     deviation = 0
-    sim = 100
+    sim = 2000
     for t in range(0, sim):
         w = np.random.normal(size = m*T)
         xT = np.linalg.matrix_power(A, T)@ x_0 + CT @ X[index, :] + N_T @ w
+        # s.append(xT)
         deviation = deviation + np.linalg.norm(x_f - xT)
     deviation = deviation /sim       
     dev.append(deviation)
     norm.append(np.linalg.norm(X[index]))
+    # s = np.array(s)
+    # filename2 = os.path.join(delta_folder, 'fstate-{}-{}-{}.jpeg'.format(delta, epsilon, T))
+    # plt.figure(figsize = (10,6))
+    # plt.scatter(s[:, 0], s[:, 1], marker = 'x')
+    # plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
+   
+    # plt.gca().set_aspect('equal', adjustable='box')
+    # circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
+    #                     fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
+    # plt.gca().add_patch(circle)
+    # plt.xlabel('x1')
+    # plt.ylabel('x2')
+    # plt.title('horizon = {}'.format(T))
+    # plt.legend()
+    # plt.savefig(filename2)
     
 N = np.arange(0, len(dev))
 plt.figure(figsize = (10,6))
@@ -136,7 +159,7 @@ plt.xlabel('time horizon')
 plt.ylabel('state dev')
 plt.title('avg state deviation')
 plt.legend()
-plt.savefig('dev-T-{}-{}.jpeg'.format(epsilon, delta))
+plt.savefig('dev-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
 
 
 plt.figure(figsize = (10,6))
@@ -144,7 +167,7 @@ plt.plot(N, norm)
 plt.xlabel('time horizon')
 plt.ylabel('u* norm')
 plt.legend()
-plt.savefig('norm-T-{}-{}.jpeg'.format(epsilon, delta))
+plt.savefig('norm-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
     
 
 

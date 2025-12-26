@@ -27,7 +27,7 @@ def type_1(n, m, T, seed=None):
     for i in range(1, T):
         N_T = np.hstack((N_T, np.linalg.matrix_power(A, i) @ B))
     
-    return A, B, N_T
+    return A, B
 
 def type_2(n, m, T, seed=None):
     #unstable system
@@ -48,7 +48,7 @@ def type_2(n, m, T, seed=None):
     for i in range(1, T):
         N_T = np.hstack((N_T, np.linalg.matrix_power(A, i) @ B))
     
-    return A, B, N_T
+    return A, B
 
 def type_3(n,m, T, seed=None, stable=True):
     # diagonal system
@@ -68,7 +68,7 @@ def type_3(n,m, T, seed=None, stable=True):
     for i in range(1, T):
         N_T = np.hstack((N_T, np.linalg.matrix_power(A, i) @ B))
     
-    return A, B, N_T
+    return A, B
 
 
 def get_system(name, n, m, T, seed=None):
