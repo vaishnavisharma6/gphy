@@ -17,7 +17,7 @@ def sample_u(CT, b, alpha, n):
         # sample x in the ball ||x||^2 < alpha
         x = np.random.normal(size=a)
         x = x / np.linalg.norm(x)  # unit vector
-        r = np.sqrt(alpha) * np.random.rand()**(1/a)
+        r = np.sqrt(alpha) 
         x = r * x
 
         # solve for u: C^T u = x - b
@@ -42,10 +42,8 @@ class gp_ucb:
         beta = 0.5
         var = np.diag(cov).reshape(-1, 1)
         score = -1*mean + (beta**0.5 * var)
-        # print(np.shape(score))
         max_indices = np.where(score == score.max())[0]
         i = np.random.choice(max_indices)
-        print(i)
         x = self.X[i]
         return(x, i)
 
@@ -61,8 +59,6 @@ class gp_ucb:
     def updation(self, Y_obs, X_obs):
             mean =  k.K(self.X, X_obs) @ np.linalg.inv(k.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ Y_obs
             cov = k.K(self.X, self.X) - k.K(self.X, X_obs) @ np.linalg.inv(k.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ k.K(X_obs, self.X)
-            print(np.shape(mean))
-            print(np.shape(cov))
             return(mean, cov)
 
 
@@ -72,40 +68,39 @@ class gp_ucb:
 n,m = 2,2
 x_0 = np.array([0.2, 0.0])
 
-T = 4
+T_list  = range(1, 100)
 sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
-norm_folder = 'gp_norms_{}'.format(name)
-state_folder = 'gp_states_{}'.format(name)
-os.makedirs(norm_folder, exist_ok=True)
-os.makedirs(state_folder, exist_ok=True)
 
-A, B, CT = get_system(name, n, m, T, seed=2)
-u = np.random.randn(m*T, 1)
-
-x_f = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ u
-x_f =  x_f.reshape(-1)
-
-N_T = np.eye(n)
-
-for i in range(1, T):
-     N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
-     
-sigma_w = np.eye(n*T) * 0.1
-sigma_z = np.linalg.matrix_power(A, T) @ sigma_0 @ np.linalg.matrix_power(A, T).T + N_T @ sigma_w @ N_T.T
-traceSigma = np.trace(sigma_z)
-tau = 2 * np.trace(sigma_z @ sigma_z)
-b = (np.linalg.matrix_power(A, T) @ x_0) - x_f
-epsilon = 0.001
-delta = 0.01
-b = np.linalg.matrix_power(A, T)@x_0 - x_f
-alpha = epsilon**2 - b.T@b + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
-print(alpha)
-k = GPy.kern.RBF(m*T)
 dev = []
 norm = []
-for j in range(100, 500, 100):
+for T in T_list:
+
+    A, B, CT = get_system(name, n, m, T, seed=2)
+    u = np.random.randn(m*T, 1)
+
+    x_f = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ u
+    x_f =  x_f.reshape(-1)
+
+    N_T = np.eye(n)
+
+    for i in range(1, T):
+        N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
+        
+    sigma_w = np.eye(n*T) * 0.1
+    sigma_z = np.linalg.matrix_power(A, T) @ sigma_0 @ np.linalg.matrix_power(A, T).T + N_T @ sigma_w @ N_T.T
+    traceSigma = np.trace(sigma_z)
+    tau = 2 * np.trace(sigma_z @ sigma_z)
+    b = (np.linalg.matrix_power(A, T) @ x_0) - x_f
+    epsilon = 0.5
+    delta = 0.99
+    b = np.linalg.matrix_power(A, T)@x_0 - x_f
+    alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
+    k = GPy.kern.RBF(m*T)
+   
+    plt.figure(figsize = (10, 10))
+    j = 2000
     X =  sample_u(CT, b, alpha, j) # set of inputs from constraint (only change)
     
     algo = gp_ucb(X)
@@ -113,9 +108,7 @@ for j in range(100, 500, 100):
     Y_obs = []
     indices = []
     mean, cov = algo.initialize(k)
-    print(mean)
-
-    plt.figure(figsize = (10, 6))
+ 
 
     N = np.arange(0, np.shape(X)[0])
     for t in range(0,50):
@@ -125,32 +118,36 @@ for j in range(100, 500, 100):
         indices.append(i)
         Y_obs.append(y)
         mean, cov = algo.updation(np.array(Y_obs), np.array(X_obs))
-        plt.fill_between(N, mean[:, 0] - 1*np.sqrt(np.diag(cov)), mean[:, 0] + 1*np.sqrt(np.diag(cov)), alpha=0.2, color='blue')
-        plt.plot(N, mean, color = 'red')
-        plt.scatter(indices, Y_obs, color ='black')
-        plt.xlabel('X')
-        plt.ylabel('Mean function')
-        plt.legend()
-        plt.pause(0.4)
-        plt.savefig('gp_ucb.jpeg')
     index = indices[-1]    
-    w = np.random.normal(size = m*T)
-    xT = np.linalg.matrix_power(A, T)@ x_0 + CT @ X[index, :] + N_T @ w
-    dev.append(np.linalg.norm(x_f - xT))
+    deviation = 0
+    sim = 100
+    for t in range(0, sim):
+        w = np.random.normal(size = m*T)
+        xT = np.linalg.matrix_power(A, T)@ x_0 + CT @ X[index, :] + N_T @ w
+        deviation = deviation + np.linalg.norm(x_f - xT)
+    deviation = deviation /sim       
+    dev.append(deviation)
     norm.append(np.linalg.norm(X[index]))
-   
-N = np.arange(0, 6)
-plt.figure(figsize=(10,6))
-plt.plot(N, dev, label = 'dev vs sample size')
+    
+N = np.arange(0, len(dev))
+plt.figure(figsize = (10,6))
+plt.plot(N, dev)
+plt.xlabel('time horizon')
+plt.ylabel('state dev')
+plt.title('avg state deviation')
 plt.legend()
-plt.savefig('dev.jpeg')  
-plt.figure(figsize=(10, 6))
+plt.savefig('dev-T-{}-{}.jpeg'.format(epsilon, delta))
 
-plt.plot(N, norm, label = 'norm')
+
+plt.figure(figsize = (10,6))
+plt.plot(N, norm)
+plt.xlabel('time horizon')
+plt.ylabel('u* norm')
 plt.legend()
-plt.savefig('norm vs sample_size.jpeg')
+plt.savefig('norm-T-{}-{}.jpeg'.format(epsilon, delta))
+    
 
 
-# iterative constraint
 
+  
 
