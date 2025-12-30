@@ -58,7 +58,7 @@ class gphy:
 n,m = 2,2
 x_0 = np.array([0.0, 0.0])
 
-T_list  = range(1, 50)
+T_list  = range(1, 30)
 # sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
@@ -111,7 +111,7 @@ for T in T_list:
     for k in range(0, T):
         X_obs = []
         Y_obs = []
-        for t in range(0,10):
+        for t in range(0,100):
             x, i = algo.sample(mean, cov)
             X_obs.append(x)
             wk = np.random.normal(n)
@@ -128,8 +128,7 @@ for T in T_list:
         x_0 = xk
     final_u = [x.tolist() for x in final_u]    
    
-    print(final_u)
-    print(np.concatenate(final_u[::-1]))
+    
     #record metrics----------------------------------------
     deviation = 0
     sim = 2000
@@ -156,7 +155,7 @@ for T in T_list:
     plt.title('horizon = {}'.format(T))
     plt.legend()
     plt.savefig(filename4)
-    
+    plt.close()
 N = np.arange(0, len(dev))
 plt.figure(figsize = (10,6))
 plt.plot(N, dev, label = 'offline')
@@ -165,7 +164,7 @@ plt.ylabel('state dev')
 plt.title('avg state deviation')
 plt.legend()
 plt.savefig('udev-T.jpeg')
-
+plt.close()
 
 plt.figure(figsize = (10,6))
 plt.plot(N, norm, label = 'offline')
@@ -173,4 +172,8 @@ plt.xlabel('time horizon')
 plt.ylabel('u* norm')
 plt.legend()
 plt.savefig('unorm-T.jpeg')
-    
+plt.close()    
+
+
+
+#transfer learning
