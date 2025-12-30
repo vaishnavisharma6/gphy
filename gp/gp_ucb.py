@@ -458,7 +458,8 @@ for T in T_list:
     # b = np.linalg.matrix_power(A, T)@x_0 - x_f
     # alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
     k3 = GPy.kern.RBF(m)
-    U = np.random.randn(m, 100)
+    U = np.random.randn(100, m)
+    print(U)
     U = U.reshape(U.shape[0], -1)
     # X =  sample_u(CT, b, alpha, j) # set of inputs from constraint (only change)
     
