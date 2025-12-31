@@ -42,7 +42,8 @@ class gphy:
         gamma = 0.8
         l = 0.5
         const = np.linalg.norm(x_f - x_0)
-        ratio = (gamma * np.linalg.norm(xn- xk)+ np.linalg.norm(x_f - xn))/const
+        # ratio = (gamma * np.linalg.norm(xn- xk)+ np.linalg.norm(x_f - xn))/const
+        ratio = np.linalg.norm(x_f - xn)/const
         final = y + l* ratio
         return(final)
 
@@ -58,7 +59,7 @@ class gphy:
 n,m = 2,2
 x_0 = np.array([0.0, 0.0])
 
-T_list  = range(1, 30)
+T_list  = range(1, 2)
 # sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
@@ -111,7 +112,7 @@ for T in T_list:
     for k in range(0, T):
         X_obs = []
         Y_obs = []
-        for t in range(0,100):
+        for t in range(0,1):
             x, i = algo.sample(mean, cov)
             X_obs.append(x)
             wk = np.random.normal(n)
@@ -131,7 +132,7 @@ for T in T_list:
     
     #record metrics----------------------------------------
     deviation = 0
-    sim = 2000
+    sim = 1
     for t in range(0, sim):
         w = np.random.normal(size = n*T)
         xT = np.linalg.matrix_power(A, T)@ x_0 + CT @ np.concatenate(final_u[::-1]) + N_T @ w
@@ -176,4 +177,108 @@ plt.close()
 
 
 
-#transfer learning
+#GP training then prediction
+
+#set of inputs u
+#cost values with str and u cost
+#states achieved
+# final posterior
+
+class train_gphy:
+    def __init__(self, domain):
+        self.X = domain
+    
+    def initialize(self, k1):
+        pr_mean = np.zeros((len(self.X), 1))
+        pr_cov = k1.K(self.X, self.X)
+        return(pr_mean, pr_cov)
+        
+    
+    def sample(self, mean, cov):
+        beta = 0.5
+        var = np.diag(cov).reshape(-1, 1)
+        score = -1*mean + (beta**0.5 * var)
+        max_indices = np.where(score == score.max())[0]
+        i = np.random.choice(max_indices)
+        x = self.X[i]
+        return(x, i)
+
+    def cost(self, Q, x, T):
+        # Q_tilde = block_diag(*([Q] * T))
+        x = x.reshape(-1,1)
+        c = np.transpose(x) @ Q @ x
+        w = np.random.normal()
+        y = c + w
+        return(y.flatten())
+    
+    def str(self, xk, xn, x_f, y):
+        gamma = 0.8
+        l = 0.5
+        const = np.linalg.norm(x_f - x_0)
+        # ratio = (gamma * np.linalg.norm(xn- xk)+ np.linalg.norm(x_f - xn))/const
+        ratio = np.linalg.norm(x_f - xn)/const
+        final = y + l* ratio
+        return(final)
+
+    def updation(self, Y_obs, X_obs):
+            mean =  k1.K(self.X, X_obs) @ np.linalg.inv(k1.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ Y_obs
+            cov = k1.K(self.X, self.X) - k1.K(self.X, X_obs) @ np.linalg.inv(k1.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ k1.K(X_obs, self.X)
+            return(mean, cov)
+
+U = []
+X = []
+y = []
+nsim = 100
+T = 4
+A, B, CT = get_system(name, n, m, T, seed = 0)
+u = np.random.randn(m*T)
+x_f = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ u
+x_f.reshape(-1)
+x_0 = np.array([0.0, 0.0])
+#generate training data
+for i in range(0, nsim):
+        u = np.random.randn(m)
+        U.append(u)
+        w = np.random.normal(n)
+        xn = A @ x_0 + B @ u + w
+        X.append([x_0, xn])
+        c = algo.cost(Q, u, T)
+        fc = algo.str(x_0, xn, x_f, c)
+        y.append(fc)
+        x_0 = xn
+   
+k1 = GPy.kern.RBF(m)
+U = np.vstack(U)
+model = train_gphy(U)
+pr_mean, pr_cov = model.initialize(k1)
+mean, cov = model.updation(y, U)
+
+
+T_list = range(1, 20)
+norm = []
+dev = []
+Y_obs = []
+X_obs = []
+for T in T_list:
+    A, B, CT = get_system(name, n, m, T,  seed=0)
+    for i in range(0, T):
+        u, i = model.sample(mean, cov)
+        X_obs.append(u)
+        c = model.cost(Q, u, T)
+        wk = np.random.normal(n)
+        xn = A @ x_0 + B @ u + wk
+        fy = model.str(x_0, xn, x_f, c)
+        Y_obs.append(fy)
+        mean, cov = model.updation(np.array(Y_obs), np.array(X_obs))
+        x_0 = xn
+    norm.append(np.linalg.norm(X_obs))
+    X_obs = [x.tolist() for x in X_obs]    
+    for i in range(0, nsim):
+        wk = np.random.normal(n)
+        xT = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ X_obs + wk
+        dev.append(np.linalg.norm(x_f - xT))
+
+    N = np.arange(0, len(norm))
+    plt.figure(figsize = (10,6))
+    plt.plot(N, norm)
+    plt.savefig('train_norm.jpeg')
