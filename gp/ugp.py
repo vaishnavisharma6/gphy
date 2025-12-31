@@ -59,7 +59,7 @@ class gphy:
 n,m = 2,2
 x_0 = np.array([0.0, 0.0])
 
-T_list  = range(1, 2)
+T_list  = range(1, 20)
 # sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
@@ -112,7 +112,7 @@ for T in T_list:
     for k in range(0, T):
         X_obs = []
         Y_obs = []
-        for t in range(0,1):
+        for t in range(0,100):
             x, i = algo.sample(mean, cov)
             X_obs.append(x)
             wk = np.random.normal(n)
@@ -132,7 +132,7 @@ for T in T_list:
     
     #record metrics----------------------------------------
     deviation = 0
-    sim = 1
+    sim = 2000
     for t in range(0, sim):
         w = np.random.normal(size = n*T)
         xT = np.linalg.matrix_power(A, T)@ x_0 + CT @ np.concatenate(final_u[::-1]) + N_T @ w
@@ -142,7 +142,7 @@ for T in T_list:
     dev.append(deviation)
     norm.append(np.linalg.norm(final_u))
     s = np.array(s)
-    filename4 = os.path.join(folder, 'ufstate.jpeg')
+    filename4 = os.path.join(folder, 'on_state.jpeg')
     plt.figure(figsize = (10,6))
     plt.scatter(s[:, 0], s[:, 1], marker = 'x')
     plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
@@ -156,10 +156,10 @@ for T in T_list:
     plt.title('horizon = {}'.format(T))
     plt.legend()
     plt.savefig(filename4)
-    plt.close()
+ 
 N = np.arange(0, len(dev))
 plt.figure(figsize = (10,6))
-plt.plot(N, dev, label = 'offline')
+plt.plot(N, dev, label = 'online')
 plt.xlabel('time horizon')
 plt.ylabel('state dev')
 plt.title('avg state deviation')
@@ -168,7 +168,7 @@ plt.savefig('udev-T.jpeg')
 plt.close()
 
 plt.figure(figsize = (10,6))
-plt.plot(N, norm, label = 'offline')
+plt.plot(N, norm, label = 'online')
 plt.xlabel('time horizon')
 plt.ylabel('u* norm')
 plt.legend()
@@ -217,7 +217,7 @@ class train_gphy:
         const = np.linalg.norm(x_f - x_0)
         # ratio = (gamma * np.linalg.norm(xn- xk)+ np.linalg.norm(x_f - xn))/const
         ratio = np.linalg.norm(x_f - xn)/const
-        final = y + l* ratio
+        final = y +  ratio
         return(final)
 
     def updation(self, Y_obs, X_obs):
@@ -229,10 +229,10 @@ U = []
 X = []
 y = []
 nsim = 100
-T = 4
-A, B, CT = get_system(name, n, m, T, seed = 0)
-u = np.random.randn(m*T)
-x_f = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ u
+t = 4
+A, B, CT = get_system(name, n, m, t, seed = 0)
+u = np.random.randn(m*t)
+x_f = np.linalg.matrix_power(A, t) @ x_0.reshape(-1, 1) + CT @ u
 x_f.reshape(-1)
 x_0 = np.array([0.0, 0.0])
 #generate training data
@@ -255,12 +255,19 @@ mean, cov = model.updation(y, U)
 
 
 T_list = range(1, 20)
-norm = []
-dev = []
-Y_obs = []
-X_obs = []
+norm1 = []
+dev1 = []
+
+deviation = 0
 for T in T_list:
+    Y_obs = []
+    X_obs = []
+    s = []
     A, B, CT = get_system(name, n, m, T,  seed=0)
+    N_T = np.eye(n)
+    for i in range(1, T):
+        N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
+
     for i in range(0, T):
         u, i = model.sample(mean, cov)
         X_obs.append(u)
@@ -271,14 +278,50 @@ for T in T_list:
         Y_obs.append(fy)
         mean, cov = model.updation(np.array(Y_obs), np.array(X_obs))
         x_0 = xn
-    norm.append(np.linalg.norm(X_obs))
-    X_obs = [x.tolist() for x in X_obs]    
+    norm1.append(np.linalg.norm(X_obs))
+    X_obs = np.asarray(X_obs).reshape(-1)
+    nsim = 2000
     for i in range(0, nsim):
-        wk = np.random.normal(n)
-        xT = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ X_obs + wk
-        dev.append(np.linalg.norm(x_f - xT))
+        w = np.random.normal(size = n*T)
+        print(np.shape(CT))
+        print(np.shape(X_obs))
+        xT = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ X_obs[::-1] + N_T @ w
+        s.append(xT)
+        deviation = deviation + np.linalg.norm(x_f - xT)
+    deviation = deviation/nsim
+    dev1.append(deviation)
+    s = np.array(s)
+    # filename3 = os.path.join(folder, 'train_state.jpeg')
+    # plt.figure(figsize = (10,6))
+    # plt.scatter(s[:, 0], s[:, 1], marker = 'x')
+    # plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
+   
+    # plt.gca().set_aspect('equal', adjustable='box')
+    # circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
+    #                     fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
+    # plt.gca().add_patch(circle)
+    # plt.xlabel('x1')
+    # plt.ylabel('x2')
+    # plt.title('horizon = {}'.format(T))
+    # plt.legend()
+    # plt.savefig(filename3)
+    
 
-    N = np.arange(0, len(norm))
-    plt.figure(figsize = (10,6))
-    plt.plot(N, norm)
-    plt.savefig('train_norm.jpeg')
+N = np.arange(0, len(norm))
+plt.figure(figsize = (10,6))
+plt.plot(N, norm1, label = 'batch')
+
+plt.xlabel('time horizon')
+plt.ylabel('u* norm')
+plt.legend()
+plt.savefig('train_norm.jpeg')
+plt.close()
+
+plt.figure(figsize = (10, 6))
+plt.plot(N, dev1, label = 'batch')
+
+plt.xlabel('time horizon')
+plt.ylabel('final state deviation')
+plt.legend()
+plt.savefig('train_dev.jpeg')
+plt.close()
