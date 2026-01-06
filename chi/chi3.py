@@ -20,7 +20,7 @@ import GPy
 n, m = 2, 2
 x_0 = np.array([0.0, 0.0])
 
-T_list = range(1, 40)  
+T_list = range(1, 20)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
 delta = 0.99
@@ -277,7 +277,7 @@ for t in T_list:
     plt.gca().add_patch(circle)
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('det, horizon = {}, ratio = '.format(t, count4/5000))
+    plt.title('det, horizon = {}, ratio = {}'.format(t, count4/5000))
     plt.legend()
     plt.savefig(filename4)
    
