@@ -158,9 +158,13 @@ for t in T_list:
         x3T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c3 + N_T @ w  # epsilon 
         x4T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c4 + N_T @ w
         x1.append(np.linalg.norm(x1T-x_f))
+        count1 = sum(d <= epsilon for d in x1)
         x2.append(np.linalg.norm(x2T-x_f))
+        count2 = sum(d <= epsilon for d in x2)
         x3.append(np.linalg.norm(x3T-x_f))
+        count3 = sum(d <= epsilon for d in x3)
         x4.append(np.linalg.norm(x4T - x_f))
+        count4 = sum(d <= epsilon for d in x4)
         s1.append(x1T)
         s2.append(x2T)
         s3.append(x3T)
@@ -222,7 +226,7 @@ for t in T_list:
     plt.gca().set_aspect('equal', adjustable='box')
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('2nd order, horizon = {}'.format(t))
+    plt.title('2nd order, horizon = {}, ratio = {}'.format(t, count1/5000))
     plt.legend()
     plt.savefig(filename1)
 
@@ -239,7 +243,7 @@ for t in T_list:
     plt.gca().add_patch(circle)
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('chebyshev, horizon = {}'.format(t))
+    plt.title('chebyshev, horizon = {}, ratio = {}'.format(t, count2/5000))
     plt.legend()
     plt.savefig(filename2)
 
@@ -256,7 +260,7 @@ for t in T_list:
     plt.gca().add_patch(circle)
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('epsilon, horizon = {}'.format(t))
+    plt.title('epsilon, horizon = {}, ratio = {}'.format(t, count3/5000))
     plt.legend()
     plt.savefig(filename3)
 
@@ -273,7 +277,7 @@ for t in T_list:
     plt.gca().add_patch(circle)
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('det, horizon = {}'.format(t))
+    plt.title('det, horizon = {}, ratio = '.format(t, count4/5000))
     plt.legend()
     plt.savefig(filename4)
    
