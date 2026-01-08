@@ -277,7 +277,7 @@ for hor in T_list:
             x_f = x_d
         else:
             x_f = np.linalg.matrix_power(A,1) @ x_0 + B @ ut + wt
-        b = A@x_0 - x_f
+        b = A@x_0 - x_d
     
         x_f = x_f.reshape(-1)
         alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
@@ -285,7 +285,7 @@ for hor in T_list:
         U =  osample_u(CT, b, alpha, 100)
         U = U.reshape(U.shape[0], -1)
 
-        x_0 = x_f
+        
 
         oalgo = ogp_ucb(U)
         OX_obs = []
@@ -300,7 +300,9 @@ for hor in T_list:
     
             OY_obs.append(y)
             mean, cov = oalgo.updation(np.array(OY_obs), np.array(OX_obs))
-        
+        wk = np.random.normal(n)    
+        x_n = A @ x_0 + B @ OX_obs[-1] + wk
+        x_0 = x_n
         final_u.append(OX_obs[-1])    
 
 

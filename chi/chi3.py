@@ -23,7 +23,7 @@ x_0 = np.array([0.0, 0.0])
 T_list = range(1, 20)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
-delta = 0.99
+delta = 0.9
 Q = np.diag([2.0, 3.0])
 q = norm.ppf(1 - delta)
 u_norm_diff_list = []
@@ -50,13 +50,54 @@ secu = []
 epu = []
 firstu = []
 modelu = []
+staru = []
 alleps = []
 
 x1_dev = []
 x2_dev = []
 x3_dev = []
 x4_dev = []
+x5_dev = []
 
+all_lam = []
+
+def solve_lambda(A, b, gamma, tol=1e-8, max_iter=100):
+    # 1. Eigenvalue Decomposition
+    # A is CT @ inv(Q) @ CT.T
+    eigenvalues, V = np.linalg.eigh(A)
+    
+    # 2. Transform b into the eigenvector space (b_tilde)
+    b_tilde = V.T @ b
+    b_sq = b_tilde**2
+    
+    # Check if a solution exists: gamma must be between the 'floor' and ||b||^2
+    floor = np.sum(b_sq[eigenvalues < 1e-12])
+    b_norm_sq = np.sum(b_sq)
+    
+    if gamma <= floor or gamma > b_norm_sq:
+        return None, f"No solution: gamma={gamma} is outside range ({floor}, {b_norm_sq})"
+
+    # 3. Newton-Raphson Solver
+    # We want to find x where f(x) = sum(b_sq / (1 + x*delta)^2) - gamma = 0
+    # Start with a guess (e.g., 0.1)
+    lam = 0.1 
+    
+    for i in range(max_iter):
+        denom = (1 + lam * eigenvalues)
+        f = np.sum(b_sq / (denom**2)) - gamma
+        
+        # Derivative f'(x) = sum(-2 * delta * b_sq / (1 + x*delta)^3)
+        f_prime = np.sum(-2 * eigenvalues * b_sq / (denom**3))
+        
+        new_lam = lam - f/f_prime
+        
+        # Convergence check
+        if abs(new_lam - lam) < tol:
+            return new_lam, "Success"
+        
+        lam = new_lam
+        
+    return lam, "Did not converge"
 
 
 for t in T_list:
@@ -138,7 +179,11 @@ for t in T_list:
         print(f'Convex solver failed at T={t}')
     if u_c4 is None:
         print(f'Convex solver failed at T={t}')
-
+    #expression u
+    lam, status = solve_lambda(C_T @ np.linalg.inv(Q_tilde) @ np.transpose(C_T), b, r_cheb, 1e-8, 100)
+    
+    u_star = -lam* np.linalg.inv(Q_tilde + lam * np.transpose(C_T) @ C_T) @ np.transpose(C_T) @ b
+    all_lam.append(lam)
     # --- Simulate both systems ---
     np.random.seed(0)
    
@@ -146,17 +191,20 @@ for t in T_list:
     x2 = []
     x3 = []
     x4 = []
+    x5 = []
 
     s1 = []
     s2 = []
     s3 = []
     s4 = []
+    s5 = []
     for j in range(0, 5000):
         w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*0.1)
         x1T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_convex + N_T @ w  # second order
         x2T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c2 + N_T @ w  # chebyshev
         x3T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c3 + N_T @ w  # epsilon 
         x4T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c4 + N_T @ w
+        x5T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_star + N_T @ w
         x1.append(np.linalg.norm(x1T-x_f))
         count1 = sum(d <= epsilon for d in x1)
         x2.append(np.linalg.norm(x2T-x_f))
@@ -165,20 +213,25 @@ for t in T_list:
         count3 = sum(d <= epsilon for d in x3)
         x4.append(np.linalg.norm(x4T - x_f))
         count4 = sum(d <= epsilon for d in x4)
+        x5.append(np.linalg.norm(x5T - x_f))
+        count5 = sum(d <= epsilon for d in x5)
         s1.append(x1T)
         s2.append(x2T)
         s3.append(x3T)
         s4.append(x4T)
+        s5.append(x5T)
     
     x1_dev.append(np.average(x1))
     x2_dev.append(np.average(x2))
     x3_dev.append(np.average(x3))
     x4_dev.append(np.average(x4))
+    x5_dev.append(np.average(x5))
    
     s1 = np.array(s1)
     s2 = np.array(s2)
     s3 = np.array(s3)
     s4 = np.array(s4)
+    s5 = np.array(s5)
 
     # --- Record metrics ---
     cheb_norm = u_c2.T @ Q_tilde @ u_c2
@@ -186,6 +239,7 @@ for t in T_list:
     sec_norm = u_convex.T @ Q_tilde @ u_convex
     det_norm = u_c4.T @ Q_tilde @ u_c4
     model_norm = u_model.T @ Q_tilde @ u_model
+    star_norm = u_star.T @ Q_tilde @ u_star
     # u_norm_diff = np.linalg.norm(u_c3) - np.linalg.norm(u_convex)
     
     
@@ -201,12 +255,15 @@ for t in T_list:
     u_det = u_c4.reshape(t, m)
     udet_norms = np.linalg.norm(u_det, axis = 1)
 
+    
+
 
 
     chebu.append(cheb_norm)
     epu.append(ep_norm)
     secu.append(sec_norm)
     firstu.append(det_norm)
+    staru.append(star_norm)
 
     center = (x_f[0], x_f[1])
 
@@ -292,6 +349,7 @@ plt.plot(N, x2_dev, label = 'chebyshev')
 plt.plot(N, x3_dev, label = 'epsilon sd')
 plt.plot(N, x1_dev, label = '2nd order state dev')
 plt.plot(N, x4_dev, label = 'first order')
+plt.plot(N, x5_dev, label = 'lambda u')
 
 # plt.semilogy(N, first_avg, label = 'det state dev')
 # plt.semilogy(N, modeld, label = 'model state dev')
@@ -307,6 +365,7 @@ plt.plot(N, chebu, label = 'cheby norm')
 plt.plot(N, epu, label = 'epsilon norm')
 plt.plot(N, secu, label = 'second order norm')
 plt.plot(N, firstu, label = 'first order norm')
+plt.plot(N, staru, label = 'lambda u')
 # plt.plot(N, modelu, label = 'model norm')
 plt.xlabel('time horizon')
 plt.ylabel('u* norms')
@@ -324,7 +383,13 @@ plt.title('delta = {}'.format(delta))
 plt.legend()
 plt.savefig('eps-T.jpeg')
 
-
+plt.figure(figsize = (10, 6))
+N = np.arange(0, len(all_lam))
+plt.plot(N, all_lam, label = 'lambda*')
+plt.title('lambda* vs time horizon')
+plt.xlabel('time horizon')
+plt.ylabel('lambda*')
+plt.savefig('lambda.jpeg')
 #cdf of GCS using imhof's method and satterthwaite and their comparison
 
 
