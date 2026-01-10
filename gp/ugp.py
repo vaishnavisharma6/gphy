@@ -43,7 +43,7 @@ class gphy:
         l = 0.5
         const = np.linalg.norm(x_f - x_0)
         # ratio = (gamma * np.linalg.norm(xn- xk)+ np.linalg.norm(x_f - xn))/const
-        ratio = np.linalg.norm(x_f - xn)/const
+        ratio = np.linalg.norm(xn - xk)/np.linalg.norm(x_f - xn)
         final = y + l* ratio
         return(final)
 
@@ -59,7 +59,7 @@ class gphy:
 n,m = 2,2
 x_0 = np.array([0.0, 0.0])
 
-T_list  = range(1, 20)
+T_list  = range(1, 30)
 # sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
@@ -254,7 +254,7 @@ pr_mean, pr_cov = model.initialize(k1)
 mean, cov = model.updation(y, U)
 
 
-T_list = range(1, 20)
+T_list = range(1, 30)
 norm1 = []
 dev1 = []
 
@@ -310,7 +310,7 @@ for T in T_list:
 N = np.arange(0, len(norm))
 plt.figure(figsize = (10,6))
 plt.plot(N, norm1, label = 'batch')
-
+plt.plot(N, norm, label = 'online')
 plt.xlabel('time horizon')
 plt.ylabel('u* norm')
 plt.legend()
@@ -319,7 +319,7 @@ plt.close()
 
 plt.figure(figsize = (10, 6))
 plt.plot(N, dev1, label = 'batch')
-
+plt.plot(N, dev, label = 'online')
 plt.xlabel('time horizon')
 plt.ylabel('final state deviation')
 plt.legend()
