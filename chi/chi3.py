@@ -20,7 +20,7 @@ import GPy
 n, m = 2, 2
 x_0 = np.array([0.0, 0.0])
 
-T_list = range(1, 20)  
+T_list = range(1, 15)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
 delta = 0.9
@@ -60,6 +60,13 @@ x4_dev = []
 x5_dev = []
 
 all_lam = []
+g = []
+
+ratios1 = []
+ratios2 = []
+ratios3 = []
+ratios4 = []
+ratios5 = []
 
 def solve_lambda(A, b, gamma, tol=1e-8, max_iter=100):
     # 1. Eigenvalue Decomposition
@@ -129,7 +136,9 @@ for t in T_list:
     gamma = epsilon**2 - traceSigma  #second order constraint
     r_cheb = epsilon**2 - 2* epsilon * math.sqrt(traceSigma/delta) + (traceSigma/delta)  #chebyshev
     dev = epsilon**2  #epsilon sd
+    
 
+    g.append(r_cheb)
     #choose proper epsilon
    
     
@@ -198,7 +207,7 @@ for t in T_list:
     s3 = []
     s4 = []
     s5 = []
-    for j in range(0, 5000):
+    for j in range(0, 2000):
         w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*0.1)
         x1T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_convex + N_T @ w  # second order
         x2T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c2 + N_T @ w  # chebyshev
@@ -206,21 +215,38 @@ for t in T_list:
         x4T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c4 + N_T @ w
         x5T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_star + N_T @ w
         x1.append(np.linalg.norm(x1T-x_f))
-        count1 = sum(d <= epsilon for d in x1)
+        
+        
         x2.append(np.linalg.norm(x2T-x_f))
-        count2 = sum(d <= epsilon for d in x2)
+      
+       
         x3.append(np.linalg.norm(x3T-x_f))
-        count3 = sum(d <= epsilon for d in x3)
+   
+       
         x4.append(np.linalg.norm(x4T - x_f))
-        count4 = sum(d <= epsilon for d in x4)
+      
+     
         x5.append(np.linalg.norm(x5T - x_f))
-        count5 = sum(d <= epsilon for d in x5)
+        # count5 = sum(d <= epsilon for d in x5)
+        
         s1.append(x1T)
         s2.append(x2T)
         s3.append(x3T)
         s4.append(x4T)
         s5.append(x5T)
-    
+
+    count1 = sum(d <= epsilon for d in x1)    
+    ratios1.append(count1/2000)
+    count2 = sum(d <= epsilon for d in x2)
+    ratios2.append(count2/2000)
+    count3 = sum(d <= epsilon for d in x3)
+    ratios3.append(count3/2000)
+    count4 = sum(d <= epsilon for d in x4)
+    ratios4.append(count4/2000)
+    # ratios5.append(count5/5000)
+
+
+
     x1_dev.append(np.average(x1))
     x2_dev.append(np.average(x2))
     x3_dev.append(np.average(x3))
@@ -344,28 +370,11 @@ for t in T_list:
 # diff(T_list, u_norm_diff_list, state_dev_diff_list, diff_folder)   #plot diffs
 
 plt.figure(figsize = (10,6))
-N = np.arange(0, len(x2_dev))
-plt.plot(N, x2_dev, label = 'chebyshev')
-plt.plot(N, x3_dev, label = 'epsilon sd')
-plt.plot(N, x1_dev, label = '2nd order state dev')
-plt.plot(N, x4_dev, label = 'first order')
-plt.plot(N, x5_dev, label = 'lambda u')
 
-# plt.semilogy(N, first_avg, label = 'det state dev')
-# plt.semilogy(N, modeld, label = 'model state dev')
-plt.xlabel('time horizon')
-plt.ylabel('State deviation')
-plt.title('avg state deviation vs time horizon, delta = {}'.format(delta))
-plt.legend()
-plt.savefig('dev-T-{}-{}.jpeg'.format(epsilon, delta))
 
 plt.figure(figsize = (10,6))
 N = np.arange(0, len(chebu))
-plt.plot(N, chebu, label = 'cheby norm')
-plt.plot(N, epu, label = 'epsilon norm')
-plt.plot(N, secu, label = 'second order norm')
-plt.plot(N, firstu, label = 'first order norm')
-plt.plot(N, staru, label = 'lambda u')
+
 # plt.plot(N, modelu, label = 'model norm')
 plt.xlabel('time horizon')
 plt.ylabel('u* norms')
@@ -392,7 +401,25 @@ plt.ylabel('lambda*')
 plt.savefig('lambda.jpeg')
 #cdf of GCS using imhof's method and satterthwaite and their comparison
 
+plt.figure(figsize = (10,6))
+N = np.arange(0, len(g))
+plt.plot(N, g, '--',label = 'gamma')
+plt.savefig('gamma.jpeg')
 
+
+N = np.arange(0, len(ratios1))
+plt.figure(figsize = (10, 6))
+plt.plot(N, ratios1, label = 'second order')
+plt.plot(N, ratios2, label = 'chebyshev')
+plt.plot(N, ratios3, label = 'epsilon')
+plt.plot(N, ratios4, label = 'det')
+
+plt.xlabel('time horizon')
+plt.ylabel('ratio')
+plt.title('final state ratio inside epsilon ball')
+plt.legend()
+plt.savefig('ratio.jpeg')
+plt.close()
 #simulate all systems
 
 
@@ -400,6 +427,232 @@ plt.savefig('lambda.jpeg')
  
     
 
+def sample_u(C, b, gamma, n, nullscale=1.0):
+   
+    m, d = C.shape
+    b = b.reshape(-1)
+
+    # SVD for nullspace
+    U, S, Vt = np.linalg.svd(C, full_matrices=True)
+    rank = np.linalg.matrix_rank(C)
+    N = Vt[rank:].T   # nullspace basis
+
+    C_pinv = np.linalg.pinv(C)
+
+    u_samples = []
+
+    while len(u_samples) < n:
+        # 1. sample y uniformly from ball ||y||^2 <= gamma
+        z = np.random.randn(m)
+        z = z / np.linalg.norm(z)
+        r = np.random.rand() ** (1.0 / m)     # correct radius scaling
+        y = np.sqrt(gamma) * r * z
+
+        # 2. particular solution
+        u_p = C_pinv @ (y - b)
+
+        # 3. add bounded nullspace component
+        if N.size > 0:
+            w = nullscale * np.random.randn(N.shape[1])
+            u = u_p + N @ w
+        else:
+            u = u_p
+
+        # 4. safety check (numerical)
+        if (C @ u + b).T @ (C @ u + b) <= gamma + 1e-8:
+            u_samples.append(u)
+
+    return np.array(u_samples)
+
+
+
+class gp_ucb:
+    def __init__(self, domain):
+        self.X = domain
+    
+    def initialize(self, k):
+        pr_mean = np.zeros((len(self.X), 1))
+        pr_cov = k.K(self.X, self.X)
+        return(pr_mean, pr_cov)
+        
+    
+    def sample(self, mean, cov):
+        beta = 0.5
+        var = np.diag(cov).reshape(-1, 1)
+        score = -1*mean + (beta**0.5 * var)
+        max_indices = np.where(score == score.max())[0]
+        i = np.random.choice(max_indices)
+        x = self.X[i]
+        return(x, i)
+
+    def cost(self, Q, x, T):
+        Q_tilde = block_diag(*([Q] * T))
+        x = x.reshape(-1,1)
+        c = np.transpose(x) @ Q_tilde @ x
+        w = np.random.normal()
+        y = c + w
+        return(y.flatten())
+    
+
+    def updation(self, Y_obs, X_obs):
+            mean =  k.K(self.X, X_obs) @ np.linalg.inv(k.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ Y_obs
+            cov = k.K(self.X, self.X) - k.K(self.X, X_obs) @ np.linalg.inv(k.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ k.K(X_obs, self.X)
+            return(mean, cov)
+
+
+#algorithm 1: Find set of feasible inputs and using BO, obtain MECI
+
+#system parameters
+n,m = 2,2
+x_0 = np.array([0.0, 0.0])
+
+T_list  = range(1, 15)
+sigma_0 = np.eye(n) *0.1
+Q = np.diag([2.0, 3.0])
+name = 'stable'
+epsilon = 0.85
+delta = 0.9
+delta_folder = 'traj_{}'.format(delta)
+idelta_folder = 'traj_{}'.format(delta)
+os.makedirs(delta_folder, exist_ok = True)
+dev = []
+norm = []
+ratios = []
+j = 500
+for T in T_list:
+    A, B, CT = get_system(name, n, m, T,  seed=0)
+
+    u = np.random.randn(m*T, 1)
+    # CT = B
+    # for i in range(1, T):
+    #     CT = np.hstack((CT, np.linalg.matrix_power(A, i) @ B)) 
+
+    x_f = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ u
+    x_f =  x_f.reshape(-1)
+
+    N_T = np.eye(n)
+
+    for i in range(1, T):
+        N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
+
+        
+    sigma_w = np.eye(n*T) * 0.1
+    sigma_z = N_T @ sigma_w @ N_T.T
+    traceSigma = np.trace(sigma_z)
   
+    b = (np.linalg.matrix_power(A, T)@x_0) - x_f
+    alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
+    # alpha = epsilon**2 - traceSigma
+    k = GPy.kern.Poly(m*T)
+   
+   
+    X =  sample_u(CT, b, alpha, j) # set of inputs from constraint (only change)
+
+    if T == 1:
+        
+        plt.figure(figsize = (10,6))
+        plt.plot(X[:, 0], X[:, 1], 'x')
+        plt.savefig('inputs.jpeg')
+
+    algo = gp_ucb(X)
+    X_obs = []
+    Y_obs = []
+    indices = []
+    mean, cov = algo.initialize(k)
+    s = []
+    x1 = []
+    # Y = algo.cost(Q, X, Y)
+    # model = GPy.models.GPRegression(X, Y)
+    # model.optimize
+    for t in range(0,700):
+        x, i = algo.sample(mean, cov)
+        X_obs.append(x)
+        y = algo.cost(Q, x, T)
+        indices.append(i)
+        Y_obs.append(y)
+        mean, cov = algo.updation(np.array(Y_obs), np.array(X_obs))
+    index = indices[-1]    
+    # print(X[index,:])
+    #final state distribution
+    deviation = 0
+    sim = 2000
+    count1 = 0
+    for t in range(0, sim):
+        w = np.random.multivariate_normal(np.zeros(n*T), np.eye(n*T)*0.1)
+        xT = np.linalg.matrix_power(A, T)@ x_0 + CT @ X[index, :] + N_T @ w
+        s.append(xT)
+        x1.append(np.linalg.norm(xT-x_f))
+        deviation = deviation + np.linalg.norm(x_f - xT)
+    deviation = deviation /sim       
+    dev.append(deviation)
+    count1 = sum(d <= epsilon for d in x1)
+    ratios.append(count1/sim)
+    norm.append(np.linalg.norm(X[index]))
+    s = np.array(s)
+    filename2 = os.path.join(delta_folder, 'fstate-{}-{}-{}.jpeg'.format(delta, epsilon, T))
+    plt.figure(figsize = (10,6))
+    plt.scatter(s[:, 0], s[:, 1], marker = 'x')
+    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
+   
+    plt.gca().set_aspect('equal', adjustable='box')
+    circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
+                        fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
+    plt.gca().add_patch(circle)
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+    plt.title('horizon = {}, ratio = {}'.format(T, count1/sim))
+    plt.legend()
+    plt.savefig(filename2)
+    plt.close()
+
+N = np.arange(0, len(dev))
+plt.figure(figsize = (10,6))
+plt.plot(N, dev,'x', label = 'offline_gp')
+# N = np.arange(0, len(x2_dev))
+plt.plot(N, x2_dev, label = 'chebyshev')
+plt.plot(N, x3_dev, label = 'epsilon sd')
+plt.plot(N, x1_dev, label = '2nd order state dev')
+plt.plot(N, x4_dev, label = 'first order')
+# plt.plot(N, x5_dev, label = 'lambda u')
+
+# plt.semilogy(N, first_avg, label = 'det state dev')
+# plt.semilogy(N, modeld, label = 'model state dev')
+# plt.xlabel('time horizon')
+# plt.ylabel('State deviation')
+# plt.title('avg state deviation vs time horizon, delta = {}'.format(delta))
+# plt.legend()
+# plt.savefig('dev-T-{}-{}.jpeg'.format(epsilon, delta))
+plt.xlabel('time horizon')
+plt.ylabel('state dev')
+plt.title('avg state deviation')
+plt.legend()
+plt.savefig('dev-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
+plt.close()
+
+
+
+plt.figure(figsize = (10,6))
+plt.plot(N, norm, 'x', label = 'offline gp')
+plt.plot(N, chebu, label = 'cheby norm')
+plt.plot(N, epu, label = 'epsilon norm')
+plt.plot(N, secu, label = 'second order norm')
+plt.plot(N, firstu, label = 'first order norm')
+# plt.plot(N, staru, label = 'lambda u')
+plt.xlabel('time horizon')
+plt.ylabel('u* norm')
+plt.legend()
+plt.savefig('norm-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
+plt.close()
+    
+
+N = np.arange(0, len(ratios))
+plt.figure(figsize = (10, 6))
+plt.plot(N, ratios)
+plt.xlabel('time horizon')
+plt.ylabel('ratio')
+plt.title('final state ratio inside epsilon ball')
+plt.legend()
+plt.savefig('off_ratio.jpeg')
+plt.close()
 
   
