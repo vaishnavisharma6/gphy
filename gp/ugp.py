@@ -216,7 +216,7 @@ class train_gphy:
         l = 0.5
         const = np.linalg.norm(x_f - x_0)
         # ratio = (gamma * np.linalg.norm(xn- xk)+ np.linalg.norm(x_f - xn))/const
-        ratio = np.linalg.norm(x_f - xn)/const
+        ratio = np.linalg.norm(xn - xk)/np.linalg.norm(x_f - xn)
         final = y +  ratio
         return(final)
 

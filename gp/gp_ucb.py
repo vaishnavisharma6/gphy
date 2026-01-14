@@ -13,24 +13,69 @@ from datagen import get_system
 
 #unknown cost, known model
 
-def sample_u(CT, b, alpha, n):
-    a, d = CT.shape  # C is m x d
+# def sample_u(C, b, gamma, n):
+#     m, d = C.shape
+#     u_samples = []
+
+#     # step 1: sample y on sphere
+#     while len(u_samples) < n:
+#         z = np.random.randn(m)
+#         y = np.sqrt(gamma) * (z / np.linalg.norm(z))
+
+#         # step 2: particular solution
+#         Cp = np.linalg.pinv(C)
+#         u_p = Cp @ (y - b)
+
+#         # step 3: nullspace
+#         U, S, Vt = np.linalg.svd(C)
+#         N = Vt[m:].T  # nullspace basis
+
+#         w = np.random.randn(N.shape[1])
+#         u = u_p + N @ w
+#         v = (C @ u + b).T @ (C @ u + b)
+
+#         u_samples.append(u)
+
+#     return np.array(u_samples)
+
+def sample_u(C, b, gamma, n, nullscale=1.0):
+   
+    m, d = C.shape
+    b = b.reshape(-1)
+
+    # SVD for nullspace
+    U, S, Vt = np.linalg.svd(C, full_matrices=True)
+    rank = np.linalg.matrix_rank(C)
+    N = Vt[rank:].T   # nullspace basis
+
+    C_pinv = np.linalg.pinv(C)
+
     u_samples = []
 
     while len(u_samples) < n:
-        # sample x in the ball ||x||^2 < alpha
-        x = np.random.normal(size=a)
-        x = x / np.linalg.norm(x)  # unit vector
-        r = np.sqrt(alpha) 
-        x = r * x
+        # 1. sample y uniformly from ball ||y||^2 <= gamma
+        z = np.random.randn(m)
+        z = z / np.linalg.norm(z)
+        r = np.random.rand() ** (1.0 / m)     # correct radius scaling
+        y = np.sqrt(gamma) * r * z
 
-        # solve for u: C^T u = x - b
-        # u = np.linalg.pinv(C.T) @ (x - b)
-        u = np.linalg.lstsq(CT,  x - b, rcond=None)[0]
+        # 2. particular solution
+        u_p = C_pinv @ (y - b)
 
-        u_samples.append(u)
+        # 3. add bounded nullspace component
+        if N.size > 0:
+            w = nullscale * np.random.randn(N.shape[1])
+            u = u_p + N @ w
+        else:
+            u = u_p
+
+        # 4. safety check (numerical)
+        if (C @ u + b).T @ (C @ u + b) <= gamma + 1e-8:
+            u_samples.append(u)
 
     return np.array(u_samples)
+
+
 
 class gp_ucb:
     def __init__(self, domain):
@@ -77,14 +122,14 @@ sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
 epsilon = 0.85
-delta = 0.9
+delta = 0.7
 delta_folder = 'traj_{}'.format(delta)
 idelta_folder = 'traj_{}'.format(delta)
 os.makedirs(delta_folder, exist_ok = True)
 dev = []
 norm = []
 ratios = []
-j = 1000
+j = 500
 for T in T_list:
     A, B, CT = get_system(name, n, m, T,  seed=0)
 
@@ -103,16 +148,23 @@ for T in T_list:
 
         
     sigma_w = np.eye(n*T) * 0.1
-    sigma_z = np.linalg.matrix_power(A, T) @ sigma_0 @ np.linalg.matrix_power(A, T).T + N_T @ sigma_w @ N_T.T
+    sigma_z = N_T @ sigma_w @ N_T.T
     traceSigma = np.trace(sigma_z)
   
     b = np.linalg.matrix_power(A, T)@x_0 - x_f
-    alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
-    k = GPy.kern.RBF(m*T)
+    # alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
+    alpha = epsilon**2 - traceSigma
+    k = GPy.kern.Poly(m*T)
    
    
     X =  sample_u(CT, b, alpha, j) # set of inputs from constraint (only change)
-    
+
+    if T == 1:
+        
+        plt.figure(figsize = (10,6))
+        plt.plot(X[:, 0], X[:, 1], 'x')
+        plt.savefig('inputs.jpeg')
+
     algo = gp_ucb(X)
     X_obs = []
     Y_obs = []
@@ -120,7 +172,10 @@ for T in T_list:
     mean, cov = algo.initialize(k)
     s = []
     x1 = []
-    for t in range(0,400):
+    # Y = algo.cost(Q, X, Y)
+    # model = GPy.models.GPRegression(X, Y)
+    # model.optimize
+    for t in range(0,700):
         x, i = algo.sample(mean, cov)
         X_obs.append(x)
         y = algo.cost(Q, x, T)
@@ -128,10 +183,11 @@ for T in T_list:
         Y_obs.append(y)
         mean, cov = algo.updation(np.array(Y_obs), np.array(X_obs))
     index = indices[-1]    
-
+    print(X[index,:])
     #final state distribution
     deviation = 0
-    sim = 2000
+    sim = 3000
+    count1 = 0
     for t in range(0, sim):
         w = np.random.normal(size = n*T)
         xT = np.linalg.matrix_power(A, T)@ x_0 + CT @ X[index, :] + N_T @ w
@@ -217,7 +273,7 @@ class ogp_ucb:
     
     def initialize(self, k):
         pr_mean = np.zeros((len(self.X), 1))
-        pr_cov = k.K(self.X, self.X)
+        pr_cov = k1.K(self.X, self.X)
         return(pr_mean, pr_cov)
         
     
@@ -295,11 +351,11 @@ for hor in T_list:
             x_f = x_d
         else:
             x_f = np.linalg.matrix_power(A,1) @ x_0 + B @ ut + wt
-        b = A@x_0 - x_d
+        b = np.linalg.matrix_power(A,t)@x_0 - x_d
     
         x_f = x_f.reshape(-1)
         alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
-        k1 = GPy.kern.RBF(m)
+        k1 = GPy.kern.Poly(m)
         U =  osample_u(CT, b, alpha, 100)
         U = U.reshape(U.shape[0], -1)
 
@@ -390,167 +446,4 @@ plt.savefig('inorm-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
 
 
 # #------------------------------------------------------------------------------------
-# # everything unknown case
-
-  
-# class gphy:
-#     def __init__(self, domain):
-#         self.X = domain
-    
-#     def initialize(self, k3):
-#         pr_mean = np.zeros((len(self.X), 1))
-#         pr_cov = k3.K(self.X, self.X)
-#         return(pr_mean, pr_cov)
-        
-    
-#     def sample(self, mean, cov):
-#         beta = 0.5
-#         var = np.diag(cov).reshape(-1, 1)
-#         score = -1*mean + (beta**0.5 * var)
-#         max_indices = np.where(score == score.max())[0]
-#         i = np.random.choice(max_indices)
-#         x = self.X[i]
-#         return(x, i)
-
-#     def cost(self, Q, x, T):
-#         Q_tilde = block_diag(*([Q] * T))
-#         x = x.reshape(-1,1)
-#         c = np.transpose(x) @ Q_tilde @ x
-#         w = np.random.normal()
-#         y = c + w
-#         return(y.flatten())
-    
-#     def str(self, xk, xn, x_f, y):
-#         gamma = 0.8
-#         l = 0.5
-#         const = np.linalg.norm(x_f - x_0)
-#         ratio = (gamma * np.linalg.norm(xn- xk)+ np.linalg.norm(x_f - xn))/const
-#         final = y + l* ratio
-#         return(final)
-
-#     def updation(self, Y_obs, X_obs):
-#             mean =  k3.K(self.X, X_obs) @ np.linalg.inv(k3.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ Y_obs
-#             cov = k3.K(self.X, self.X) - k3.K(self.X, X_obs) @ np.linalg.inv(k3.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ k3.K(X_obs, self.X)
-#             return(mean, cov)
-
-
-
-
-# #system parameters
-# n,m = 2,2
-# x_0 = np.array([0.0, 0.0])
-
-# T_list  = range(1, 20)
-# # sigma_0 = np.eye(n) *0.1
-# Q = np.diag([2.0, 3.0])
-# name = 'stable'
-# # epsilon = 0.85
-# # delta = 0.9
-# # delta_folder = 'traj_{}'.format(delta)
-# folder = 'traj_un'
-# # idelta_folder = 'traj_{}'.format(delta)
-# # os.makedirs(delta_folder, exist_ok = True)
-
-
-# # j = 1000
-# for T in T_list:
-#     A, B, CT = get_system(name, n, m, T,  seed=0)
-#     dev = []
-#     norm = []  
-#     u = np.random.randn(m*T, 1)
-#     # CT = B
-#     # for i in range(1, T):
-#     #     CT = np.hstack((CT, np.linalg.matrix_power(A, i) @ B)) 
-
-#     x_f = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ u
-#     x_f =  x_f.reshape(-1)
-
-#     N_T = np.eye(n)
-
-#     for i in range(1, T):
-#         N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
-
-        
-#     # sigma_w = np.eye(n*T) * 0.1
-#     # sigma_z = np.linalg.matrix_power(A, T) @ sigma_0 @ np.linalg.matrix_power(A, T).T + N_T @ sigma_w @ N_T.T
-#     # traceSigma = np.trace(sigma_z)
-  
-#     # b = np.linalg.matrix_power(A, T)@x_0 - x_f
-#     # alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
-#     k3 = GPy.kern.RBF(m)
-#     U = np.random.randn(100, m)
-#     print(U)
-#     U = U.reshape(U.shape[0], -1)
-#     # X =  sample_u(CT, b, alpha, j) # set of inputs from constraint (only change)
-    
-#     algo = gphy(U)
-  
-#     indices = []
-#     final_u = []
-#     mean, cov = algo.initialize(k3)
-#     s = []
-#     xk = x_0
-#     for k in range(0, T):
-#         X_obs = []
-#         Y_obs = []
-#         for t in range(0,10):
-#             x, i = algo.sample(mean, cov)
-#             X_obs.append(x)
-#             wk = np.random.normal(n)
-#             xn = A @xk + B @ x + wk
-#             y = algo.cost(Q, x, T)
-#             indices.append(i)
-#             fy = algo.str(xk, xn, x_f, y)
-#             Y_obs.append(fy)
-#             mean, cov = algo.updation(np.array(Y_obs), np.array(X_obs))
-#         index = indices[-1] 
-#         final_u.append(X_obs[-1])  
-#         wk = np.random.normal(n)
-#         xk = A @ x_0 + B @ X_obs[-1] + wk 
-#         x_0 = xk
-#     final_u = [x.tolist() for x in final_u]    
-
-#     #record metrics----------------------------------------
-#     deviation = 0
-#     sim = 2000
-#     for t in range(0, sim):
-#         w = np.random.normal(size = n*T)
-#         xT = np.linalg.matrix_power(A, T)@ x_0 + CT @ final_u[::-1] + N_T @ w
-#         s.append(xT)
-#         deviation = deviation + np.linalg.norm(x_f - xT)
-#     deviation = deviation /sim       
-#     dev.append(deviation)
-#     norm.append(np.linalg.norm(X[index]))
-#     s = np.array(s)
-#     filename4 = os.path.join(folder, 'ufstate.jpeg')
-#     plt.figure(figsize = (10,6))
-#     plt.scatter(s[:, 0], s[:, 1], marker = 'x')
-#     plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-   
-#     plt.gca().set_aspect('equal', adjustable='box')
-#     circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
-#                         fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
-#     plt.gca().add_patch(circle)
-#     plt.xlabel('x1')
-#     plt.ylabel('x2')
-#     plt.title('horizon = {}'.format(T))
-#     plt.legend()
-#     plt.savefig(filename2)
-    
-# N = np.arange(0, len(dev))
-# plt.figure(figsize = (10,6))
-# plt.plot(N, dev, label = 'offline')
-# plt.xlabel('time horizon')
-# plt.ylabel('state dev')
-# plt.title('avg state deviation')
-# plt.legend()
-# plt.savefig('udev-T.jpeg')
-
-
-# plt.figure(figsize = (10,6))
-# plt.plot(N, norm, label = 'offline')
-# plt.xlabel('time horizon')
-# plt.ylabel('u* norm')
-# plt.legend()
-# plt.savefig('unorm-T.jpeg')
-    
+#
