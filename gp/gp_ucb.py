@@ -117,7 +117,7 @@ class gp_ucb:
 n,m = 2,2
 x_0 = np.array([0.0, 0.0])
 
-T_list  = range(1, 20)
+T_list  = range(1, 10)
 sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
@@ -158,48 +158,6 @@ for T in T_list:
    
    
     X =  sample_u(CT, b, alpha, j) # set of inputs from constraint (only change)
-
-    # ======== PLOTTING FEASIBLE CONTROLS (NO CODE STRUCTURE CHANGED) ========
-
-# X has shape (j, m*T)
-# reshape safely
- # ======== SINGLE-PLOT FEASIBLE CONTROLS FOR ALL TIME STEPS ========
-
-    X_seq = X.reshape(j, T, m)
-
-    plt.figure(figsize=(7, 7))
-
-    colors = plt.cm.viridis(np.linspace(0, 1, T))
-
-    for t_step in range(T):
-        if t_step == 0 or t_step == T-1:
-            plt.scatter(
-                X_seq[:, t_step, 0],
-                X_seq[:, t_step, 1],
-                s=8,
-                alpha=0.35,
-                color=colors[t_step],
-                label=f't={t_step}' if T <= 6 else None
-            )
-
-    plt.axis('equal')
-    plt.grid(True)
-    plt.xlabel(r'$u^{(1)}$')
-    plt.ylabel(r'$u^{(2)}$')
-    plt.title(f'Feasible control inputs across all time steps (T={T})')
-
-    if T <= 6:
-        plt.legend()
-
-    plt.savefig(f'feasible_inputs_all_t_T{T}.jpeg')
-    plt.close()
-
-# ==================================================================
-
-
-
-    
-    
 
     algo = gp_ucb(X)
     X_obs = []
