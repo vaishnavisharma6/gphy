@@ -13,31 +13,6 @@ from datagen import get_system
 
 #unknown cost, known model
 
-# def sample_u(C, b, gamma, n):
-#     m, d = C.shape
-#     u_samples = []
-
-#     # step 1: sample y on sphere
-#     while len(u_samples) < n:
-#         z = np.random.randn(m)
-#         y = np.sqrt(gamma) * (z / np.linalg.norm(z))
-
-#         # step 2: particular solution
-#         Cp = np.linalg.pinv(C)
-#         u_p = Cp @ (y - b)
-
-#         # step 3: nullspace
-#         U, S, Vt = np.linalg.svd(C)
-#         N = Vt[m:].T  # nullspace basis
-
-#         w = np.random.randn(N.shape[1])
-#         u = u_p + N @ w
-#         v = (C @ u + b).T @ (C @ u + b)
-
-#         u_samples.append(u)
-
-#     return np.array(u_samples)
-
 def sample_u(C, b, gamma, n, nullscale=1.0):
    
     m, d = C.shape
@@ -95,6 +70,7 @@ class gp_ucb:
         i = np.random.choice(max_indices)
         x = self.X[i]
         return(x, i)
+    
 
     def cost(self, Q, x, T):
         Q_tilde = block_diag(*([Q] * T))
@@ -117,7 +93,7 @@ class gp_ucb:
 n,m = 2,2
 x_0 = np.array([0.0, 0.0])
 
-T_list  = range(1, 10)
+T_list  = range(1, 50)
 sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
@@ -134,9 +110,6 @@ for T in T_list:
     A, B, CT = get_system(name, n, m, T,  seed=0)
 
     u = np.random.randn(m*T, 1)
-    # CT = B
-    # for i in range(1, T):
-    #     CT = np.hstack((CT, np.linalg.matrix_power(A, i) @ B)) 
 
     x_f = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ u
     x_f =  x_f.reshape(-1)
@@ -153,10 +126,9 @@ for T in T_list:
   
     b = (np.linalg.matrix_power(A, T)@x_0) - x_f
     alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
-    # alpha = epsilon**2 - traceSigma
+
     k = GPy.kern.Poly(m*T)
-   
-   
+ 
     X =  sample_u(CT, b, alpha, j) # set of inputs from constraint (only change)
 
     algo = gp_ucb(X)
@@ -166,10 +138,8 @@ for T in T_list:
     mean, cov = algo.initialize(k)
     s = []
     x1 = []
-    # Y = algo.cost(Q, X, Y)
-    # model = GPy.models.GPRegression(X, Y)
-    # model.optimize
-    for t in range(0,700):
+
+    for t in range(0,50):
         x, i = algo.sample(mean, cov)
         X_obs.append(x)
         y = algo.cost(Q, x, T)
@@ -182,9 +152,15 @@ for T in T_list:
         
         plt.figure(figsize = (10,6))
         plt.plot(X[:, 0], X[:, 1], 'x')
-        plt.plot(X[index, 0], X[index, 1], 'o')
+        plt.plot(X[indices, 0], X[indices, 1], 'o', label = 'sampled')
+        plt.plot(X[index, 0], X[index, 1], 'o', color = 'red', label = 'u*')
+        plt.xlabel('u_0')
+        plt.ylabel('u_1')
+        plt.title('Feasible set of u for T = 1')
+        plt.legend()
         plt.savefig('inputs.jpeg')
         plt.close()
+        
     #final state distribution
     deviation = 0
     sim = 3000
@@ -231,6 +207,7 @@ plt.figure(figsize = (10,6))
 plt.plot(N, norm, label = 'offline')
 plt.xlabel('time horizon')
 plt.ylabel('u* norm')
+plt.title('u* norm vs time horizon')
 plt.legend()
 plt.savefig('norm-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
 plt.close()
@@ -247,3 +224,4 @@ plt.savefig('off_ratio.jpeg')
 plt.close()
 
 #------------------------------------------------------------------------------------------
+
