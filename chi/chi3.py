@@ -21,7 +21,7 @@ import GPy
 n, m = 2, 2
 x_0 = np.array([0.0, 0.0])
 
-T_list = range(1, 15)  
+T_list = range(1, 30, 5)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
 delta = 0.9
@@ -169,12 +169,7 @@ for t in T_list:
     u_c2 = u2.value #chebyshev
     u_c3 = u3.value #epsilon sd
     u_c4 = u4.value # first order
-    # print('RHS, 2nd order:', gamma)
-    # print('residue 2nd order:', (C_T @ u_convex + b).T @ (C_T @ u_convex + b))
-    # print('RHS, chebyshev:', r_cheb)
-    # print('residue, chebyshev:', (C_T @ u_c2 + b).T @ (C_T @ u_c2 + b))
-    # print('RHS, epsilon sd:', dev)
-    # print('residue, epsilon sd:', (C_T @ u_c3 + b).T @ np.linalg.inv(sigma_z) @ (C_T @ u_c3 + b))
+  
     w = np.random.randn(n*t)
     x = x_f - N_T @ w
     AT = np.linalg.matrix_power(A, t)
@@ -292,65 +287,65 @@ for t in T_list:
 
 
     # modelu.append(model_norm)
-    filename1 = os.path.join(delta_folder, '2nd-{}-{}.jpeg'.format(delta, t))
-    plt.figure(figsize = (10,6))
-    plt.scatter(s1[:, 0], s1[:, 1], marker = 'x')
-    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    plt.plot(x, y)
-    plt.scatter(*center)
-    plt.gca().set_aspect('equal', adjustable='box')
-    plt.xlabel('x1')
-    plt.ylabel('x2')
-    plt.title('2nd order, horizon = {}, ratio = {}'.format(t, count1/5000))
-    plt.legend()
-    plt.savefig(filename1)
+    # filename1 = os.path.join(delta_folder, '2nd-{}-{}.jpeg'.format(delta, t))
+    # plt.figure(figsize = (10,6))
+    # plt.scatter(s1[:, 0], s1[:, 1], marker = 'x')
+    # plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
+    # plt.plot(x, y)
+    # plt.scatter(*center)
+    # plt.gca().set_aspect('equal', adjustable='box')
+    # plt.xlabel('x1')
+    # plt.ylabel('x2')
+    # plt.title('2nd order, horizon = {}, ratio = {}'.format(t, count1/5000))
+
+    # plt.savefig(filename1)
 
 
-    filename2 = os.path.join(delta_folder, 'cheb-{}-{}-{}.jpeg'.format(delta, epsilon, t))
-    plt.figure(figsize = (10,6))
-    plt.scatter(s2[:, 0], s2[:, 1], marker = 'x')
-    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    plt.gca().set_aspect('equal', adjustable='box')
-    circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
-                        fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
-    plt.gca().add_patch(circle)
-    plt.xlabel('x1')
-    plt.ylabel('x2')
-    plt.title('chebyshev, horizon = {}, ratio = {}'.format(t, count2/5000))
-    plt.legend()
-    plt.savefig(filename2)
+    # filename2 = os.path.join(delta_folder, 'cheb-{}-{}-{}.jpeg'.format(delta, epsilon, t))
+    # plt.figure(figsize = (10,6))
+    # plt.scatter(s2[:, 0], s2[:, 1], marker = 'x')
+    # plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
+    # plt.gca().set_aspect('equal', adjustable='box')
+    # circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
+    #                     fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
+    # plt.gca().add_patch(circle)
+    # plt.xlabel('x1')
+    # plt.ylabel('x2')
+    # plt.title('chebyshev, horizon = {}, ratio = {}'.format(t, count2/5000))
+    # plt.legend()
+    # plt.savefig(filename2)
 
 
-    filename3 = os.path.join(delta_folder, 'eps-{}-{}-{}.jpeg'.format(delta, epsilon, t))
-    plt.figure(figsize = (10,6))
-    plt.scatter(s3[:, 0], s3[:, 1], marker = 'x')
-    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    plt.gca().set_aspect('equal', adjustable='box')
-    circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
-                        fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
-    plt.gca().add_patch(circle)
-    plt.xlabel('x1')
-    plt.ylabel('x2')
-    plt.title('epsilon, horizon = {}, ratio = {}'.format(t, count3/5000))
-    plt.legend()
-    plt.savefig(filename3)
+    # filename3 = os.path.join(delta_folder, 'eps-{}-{}-{}.jpeg'.format(delta, epsilon, t))
+    # plt.figure(figsize = (10,6))
+    # plt.scatter(s3[:, 0], s3[:, 1], marker = 'x')
+    # plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
+    # plt.gca().set_aspect('equal', adjustable='box')
+    # circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
+    #                     fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
+    # plt.gca().add_patch(circle)
+    # plt.xlabel('x1')
+    # plt.ylabel('x2')
+    # plt.title('epsilon, horizon = {}, ratio = {}'.format(t, count3/5000))
+    # plt.legend()
+    # plt.savefig(filename3)
 
 
-    filename4 = os.path.join(delta_folder, 'det-{}-{}-{}.jpeg'.format(delta, epsilon, t))
-    plt.figure(figsize = (10,6))
-    plt.scatter(s4[:, 0], s4[:, 1], marker = 'x')
-    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    plt.gca().set_aspect('equal', adjustable='box')
-    circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
-                        fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
-    plt.gca().add_patch(circle)
-    plt.xlabel('x1')
-    plt.ylabel('x2')
-    plt.title('det, horizon = {}, ratio = {}'.format(t, count4/5000))
-    plt.legend()
-    plt.savefig(filename4)
+    # filename4 = os.path.join(delta_folder, 'det-{}-{}-{}.jpeg'.format(delta, epsilon, t))
+    # plt.figure(figsize = (10,6))
+    # plt.scatter(s4[:, 0], s4[:, 1], marker = 'x')
+    # plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
+    # plt.gca().set_aspect('equal', adjustable='box')
+    # circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
+    #                     fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
+    # plt.gca().add_patch(circle)
+    # plt.xlabel('x1')
+    # plt.ylabel('x2')
+    # plt.title('det, horizon = {}, ratio = {}'.format(t, count4/5000))
+    # plt.legend()
+    # plt.savefig(filename4)
 
-plt.close()
+# plt.close()
 
 plt.figure(figsize = (10, 6))
 N = np.arange(1, len(alleps)+1)
@@ -444,8 +439,9 @@ class gp_ucb:
     
 
     def sample(self, mean, cov, t, j, d):
-        beta = 0.5
+        # beta = 0.5
         # beta = 2 * np.log((j * t**2 * np.pi**2)/d*6)
+        beta = 2 *np.log(t+1)
         var = np.diag(cov).reshape(-1, 1)
         score = -1*mean + (beta**0.5 * var)
         max_indices = np.where(score == score.max())[0]
@@ -475,7 +471,7 @@ class gp_ucb:
 n,m = 2,2
 x_0 = np.array([0.0, 0.0])
 
-T_list  = range(1, 40)
+T_list  = range(1, 30, 5)
 sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
@@ -516,8 +512,7 @@ for T in T_list:
     k = GPy.kern.RBF(
     input_dim=m*T,
     variance=1.0,        
-    lengthscale=np.ones(m*T),       
-    ARD=True
+    lengthscale=2.0
     )        
 
 
@@ -537,8 +532,8 @@ for T in T_list:
     values = np.einsum('ij,jk,ik->i', X, Q_tilde, X)
     cr = 0
     min_value = np.min(values)
-    for t in range(0,500):
-        x, i = algo.sample(mean, cov, t, j, d)
+    for t in range(0,1000):
+        x, i = algo.sample(mean, cov, t+1, j, d)
         X_obs.append(x)
         y = algo.cost(Q, x, T)
         indices.append(i)
@@ -550,13 +545,13 @@ for T in T_list:
         reg.append(cr)
     index = indices[-1]    
     N = np.arange(0, len(reg))
-    if T%5 == 0:
+    
         
-        plt.plot(N, reg, label = '{}'.format(T))
-        plt.xlabel('time')
-        plt.ylabel('regret')
-        plt.legend()
-        plt.savefig('reg.jpeg')
+    plt.plot(N, reg, label = '{}'.format(T))
+    plt.xlabel('time')
+    plt.ylabel('regret')
+    plt.legend()
+    plt.savefig('reg.jpeg')
         
     N = np.arange(0, len(indices))
     plt.figure(figsize = (10, 6))
@@ -594,8 +589,7 @@ for T in T_list:
     dev.append(deviation)
     count1 = sum(d <= epsilon for d in x1)
     ratios.append(count1/sim)
-    print(X[index, :])
-    print(X[index, :].reshape(T, m)[::-1].reshape(-1))
+   
     norm.append(X[index, :].reshape(T, m)[::-1].reshape(-1).T @ Q_tilde @ X[index, :].reshape(T, m)[::-1].reshape(-1))
     s = np.array(s)
     filename2 = os.path.join(delta_folder, 'fstate-{}-{}-{}.jpeg'.format(delta, epsilon, T))
