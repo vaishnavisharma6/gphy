@@ -77,9 +77,6 @@ for T in T_list:
     A, B, CT = get_system(name, n, m, T,  seed=0)
    
     u = np.random.randn(m*T, 1)
-    # CT = B
-    # for i in range(1, T):
-    #     CT = np.hstack((CT, np.linalg.matrix_power(A, i) @ B)) 
 
     x_f = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ u
     x_f =  x_f.reshape(-1)
@@ -89,13 +86,6 @@ for T in T_list:
     for i in range(1, T):
         N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
 
-        
-    # sigma_w = np.eye(n*T) * 0.1
-    # sigma_z = np.linalg.matrix_power(A, T) @ sigma_0 @ np.linalg.matrix_power(A, T).T + N_T @ sigma_w @ N_T.T
-    # traceSigma = np.trace(sigma_z)
-  
-    # b = np.linalg.matrix_power(A, T)@x_0 - x_f
-    # alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
     k3 = GPy.kern.RBF(m)
     U = np.random.randn(500, m)
     
@@ -134,7 +124,7 @@ for T in T_list:
     deviation = 0
     sim = 2000
     for t in range(0, sim):
-        w = np.random.normal(size = n*T)
+        w =  np.random.multivariate_normal(np.zeros(n*T), np.eye(n*T)*0.1)
         xT = np.linalg.matrix_power(A, T)@ x_0 + CT @ np.concatenate(final_u[::-1]) + N_T @ w
         s.append(xT)
         deviation = deviation + np.linalg.norm(x_f - xT)

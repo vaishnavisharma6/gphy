@@ -8,6 +8,7 @@ import matplotlib.patches as patches
 import math
 import os
 from datagen import get_system
+from functools import reduce
 from plot import opt, diff
 from scipy.integrate import quad
 from scipy.stats import chi2
@@ -168,12 +169,12 @@ for t in T_list:
     u_c2 = u2.value #chebyshev
     u_c3 = u3.value #epsilon sd
     u_c4 = u4.value # first order
-    print('RHS, 2nd order:', gamma)
-    print('residue 2nd order:', (C_T @ u_convex + b).T @ (C_T @ u_convex + b))
-    print('RHS, chebyshev:', r_cheb)
-    print('residue, chebyshev:', (C_T @ u_c2 + b).T @ (C_T @ u_c2 + b))
-    print('RHS, epsilon sd:', dev)
-    print('residue, epsilon sd:', (C_T @ u_c3 + b).T @ np.linalg.inv(sigma_z) @ (C_T @ u_c3 + b))
+    # print('RHS, 2nd order:', gamma)
+    # print('residue 2nd order:', (C_T @ u_convex + b).T @ (C_T @ u_convex + b))
+    # print('RHS, chebyshev:', r_cheb)
+    # print('residue, chebyshev:', (C_T @ u_c2 + b).T @ (C_T @ u_c2 + b))
+    # print('RHS, epsilon sd:', dev)
+    # print('residue, epsilon sd:', (C_T @ u_c3 + b).T @ np.linalg.inv(sigma_z) @ (C_T @ u_c3 + b))
     w = np.random.randn(n*t)
     x = x_f - N_T @ w
     AT = np.linalg.matrix_power(A, t)
@@ -260,29 +261,20 @@ for t in T_list:
     s5 = np.array(s5)
 
     # --- Record metrics ---
-    cheb_norm = u_c2.T @ Q_tilde @ u_c2
-    ep_norm = u_c3.T @ Q_tilde @ u_c3
-    sec_norm = u_convex.T @ Q_tilde @ u_convex
-    det_norm = u_c4.T @ Q_tilde @ u_c4
-    model_norm = u_model.T @ Q_tilde @ u_model
-    star_norm = u_star.T @ Q_tilde @ u_star
+    u_convex = u.value.reshape(-1, 1)
+    u_c2     = u2.value.reshape(-1, 1)
+    u_c3     = u3.value.reshape(-1, 1)
+    u_c4     = u4.value.reshape(-1, 1)
+
+ 
+    cheb_norm = float(u_c2.T @ Q_tilde @ u_c2)
+    ep_norm = float(u_c3.T @ Q_tilde @ u_c3)
+    sec_norm = float(u_convex.T @ Q_tilde @ u_convex)
+    det_norm = float(u_c4.T @ Q_tilde @ u_c4)
+    model_norm = float(u_model.T @ Q_tilde @ u_model)
+    star_norm = float(u_star.T @ Q_tilde @ u_star)
     # u_norm_diff = np.linalg.norm(u_c3) - np.linalg.norm(u_convex)
     
-    
-    # state_dev_diff = np.linalg.norm(x2[:, -1] - x1[:, -1])
-    # u_norm_diff_list.append(u_norm_diff)
-    # state_dev_diff_list.append(state_dev_diff)
-    u_opt = u.value.reshape(t, m)
-    u_n = np.linalg.norm(u_opt, axis = 1) #second order
-    U = u_c3.reshape(t, m)
-    u_norms = np.linalg.norm(U, axis = 1) #epsilon sd
-    u_cheb = u2.value.reshape(t, m) 
-    uc_norms = np.linalg.norm(u_cheb, axis = 1) #chebyshev
-    u_det = u_c4.reshape(t, m)
-    udet_norms = np.linalg.norm(u_det, axis = 1)
-
-    
-
 
 
     chebu.append(cheb_norm)
@@ -318,8 +310,6 @@ for t in T_list:
     plt.figure(figsize = (10,6))
     plt.scatter(s2[:, 0], s2[:, 1], marker = 'x')
     plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    # plt.plot(x, y)
-    # plt.scatter(*center)
     plt.gca().set_aspect('equal', adjustable='box')
     circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
                         fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
@@ -335,8 +325,6 @@ for t in T_list:
     plt.figure(figsize = (10,6))
     plt.scatter(s3[:, 0], s3[:, 1], marker = 'x')
     plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    # plt.plot(x, y)
-    # plt.scatter(*center)
     plt.gca().set_aspect('equal', adjustable='box')
     circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
                         fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
@@ -352,8 +340,6 @@ for t in T_list:
     plt.figure(figsize = (10,6))
     plt.scatter(s4[:, 0], s4[:, 1], marker = 'x')
     plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    # plt.plot(x, y)
-    # plt.scatter(*center)
     plt.gca().set_aspect('equal', adjustable='box')
     circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
                         fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
@@ -363,25 +349,8 @@ for t in T_list:
     plt.title('det, horizon = {}, ratio = {}'.format(t, count4/5000))
     plt.legend()
     plt.savefig(filename4)
-   
-    # opt(t, x1, x2, x3, x4, x_f, epsilon, u_n, u_norms, uc_norms, udet_norms, state_folder, norm_folder) #plot state dev, norms
-    
 
-# diff(T_list, u_norm_diff_list, state_dev_diff_list, diff_folder)   #plot diffs
-
-plt.figure(figsize = (10,6))
-
-
-plt.figure(figsize = (10,6))
-N = np.arange(0, len(chebu))
-
-# plt.plot(N, modelu, label = 'model norm')
-plt.xlabel('time horizon')
-plt.ylabel('u* norms')
-plt.title('u* norm vs time horizon, delta = {}'.format(delta))
-plt.legend()
-plt.savefig('norm-T-{}-{}.jpeg'.format(epsilon, delta))
-
+plt.close()
 
 plt.figure(figsize = (10, 6))
 N = np.arange(1, len(alleps)+1)
@@ -391,6 +360,7 @@ plt.ylabel('epsilon')
 plt.title('delta = {}'.format(delta))
 plt.legend()
 plt.savefig('eps-T.jpeg')
+plt.close()
 
 plt.figure(figsize = (10, 6))
 N = np.arange(0, len(all_lam))
@@ -399,13 +369,14 @@ plt.title('lambda* vs time horizon')
 plt.xlabel('time horizon')
 plt.ylabel('lambda*')
 plt.savefig('lambda.jpeg')
-#cdf of GCS using imhof's method and satterthwaite and their comparison
+plt.close()
+   
 
 plt.figure(figsize = (10,6))
 N = np.arange(0, len(g))
 plt.plot(N, g, '--',label = 'gamma')
 plt.savefig('gamma.jpeg')
-
+plt.close()
 
 N = np.arange(0, len(ratios1))
 plt.figure(figsize = (10, 6))
@@ -420,15 +391,11 @@ plt.title('final state ratio inside epsilon ball')
 plt.legend()
 plt.savefig('ratio.jpeg')
 plt.close()
-#simulate all systems
+   
 
-
-
- 
-    
 
 def sample_u(C, b, gamma, n, nullscale=1.0):
-   
+
     m, d = C.shape
     b = b.reshape(-1)
 
@@ -445,8 +412,8 @@ def sample_u(C, b, gamma, n, nullscale=1.0):
         # 1. sample y uniformly from ball ||y||^2 <= gamma
         z = np.random.randn(m)
         z = z / np.linalg.norm(z)
-        r = np.random.rand() ** (1.0 / m)     # correct radius scaling
-        y = np.sqrt(gamma) * r * z
+        # r = np.random.rand() ** (1.0 / m)     # correct radius scaling
+        y = np.sqrt(gamma) * z
 
         # 2. particular solution
         u_p = C_pinv @ (y - b)
@@ -469,21 +436,23 @@ def sample_u(C, b, gamma, n, nullscale=1.0):
 class gp_ucb:
     def __init__(self, domain):
         self.X = domain
-    
+
     def initialize(self, k):
         pr_mean = np.zeros((len(self.X), 1))
         pr_cov = k.K(self.X, self.X)
         return(pr_mean, pr_cov)
-        
     
-    def sample(self, mean, cov):
+
+    def sample(self, mean, cov, t, j, d):
         beta = 0.5
+        # beta = 2 * np.log((j * t**2 * np.pi**2)/d*6)
         var = np.diag(cov).reshape(-1, 1)
         score = -1*mean + (beta**0.5 * var)
         max_indices = np.where(score == score.max())[0]
         i = np.random.choice(max_indices)
         x = self.X[i]
         return(x, i)
+    
 
     def cost(self, Q, x, T):
         Q_tilde = block_diag(*([Q] * T))
@@ -492,7 +461,7 @@ class gp_ucb:
         w = np.random.normal()
         y = c + w
         return(y.flatten())
-    
+
 
     def updation(self, Y_obs, X_obs):
             mean =  k.K(self.X, X_obs) @ np.linalg.inv(k.K(X_obs, X_obs) + 1*np.eye(X_obs.shape[0])) @ Y_obs
@@ -506,26 +475,26 @@ class gp_ucb:
 n,m = 2,2
 x_0 = np.array([0.0, 0.0])
 
-T_list  = range(1, 15)
+T_list  = range(1, 40)
 sigma_0 = np.eye(n) *0.1
 Q = np.diag([2.0, 3.0])
 name = 'stable'
 epsilon = 0.85
 delta = 0.9
 delta_folder = 'traj_{}'.format(delta)
-idelta_folder = 'traj_{}'.format(delta)
+
 os.makedirs(delta_folder, exist_ok = True)
 dev = []
 norm = []
 ratios = []
+# reg = []
 j = 500
+plt.figure(figsize = (10,6))
+
 for T in T_list:
     A, B, CT = get_system(name, n, m, T,  seed=0)
 
     u = np.random.randn(m*T, 1)
-    # CT = B
-    # for i in range(1, T):
-    #     CT = np.hstack((CT, np.linalg.matrix_power(A, i) @ B)) 
 
     x_f = np.linalg.matrix_power(A, T) @ x_0.reshape(-1, 1) + CT @ u
     x_f =  x_f.reshape(-1)
@@ -538,22 +507,23 @@ for T in T_list:
         
     sigma_w = np.eye(n*T) * 0.1
     sigma_z = N_T @ sigma_w @ N_T.T
+    
     traceSigma = np.trace(sigma_z)
   
     b = (np.linalg.matrix_power(A, T)@x_0) - x_f
     alpha = epsilon**2  + (traceSigma/delta) - 2*epsilon*math.sqrt(traceSigma/delta)
-    # alpha = epsilon**2 - traceSigma
-    k = GPy.kern.Poly(m*T)
-   
-   
+
+    k = GPy.kern.RBF(
+    input_dim=m*T,
+    variance=1.0,        
+    lengthscale=np.ones(m*T),       
+    ARD=True
+    )        
+
+
+
     X =  sample_u(CT, b, alpha, j) # set of inputs from constraint (only change)
-
-    if T == 1:
-        
-        plt.figure(figsize = (10,6))
-        plt.plot(X[:, 0], X[:, 1], 'x')
-        plt.savefig('inputs.jpeg')
-
+  
     algo = gp_ucb(X)
     X_obs = []
     Y_obs = []
@@ -561,21 +531,58 @@ for T in T_list:
     mean, cov = algo.initialize(k)
     s = []
     x1 = []
-    # Y = algo.cost(Q, X, Y)
-    # model = GPy.models.GPRegression(X, Y)
-    # model.optimize
-    for t in range(0,700):
-        x, i = algo.sample(mean, cov)
+    reg = []
+    d = 0.1
+    Q_tilde = block_diag(*([Q] * T))
+    values = np.einsum('ij,jk,ik->i', X, Q_tilde, X)
+    cr = 0
+    min_value = np.min(values)
+    for t in range(0,500):
+        x, i = algo.sample(mean, cov, t, j, d)
         X_obs.append(x)
         y = algo.cost(Q, x, T)
         indices.append(i)
         Y_obs.append(y)
         mean, cov = algo.updation(np.array(Y_obs), np.array(X_obs))
+        regret = (x.T @ Q_tilde @ x) - min_value
+        cr = cr + regret
+        # print(regret)
+        reg.append(cr)
     index = indices[-1]    
-    # print(X[index,:])
+    N = np.arange(0, len(reg))
+    if T%5 == 0:
+        
+        plt.plot(N, reg, label = '{}'.format(T))
+        plt.xlabel('time')
+        plt.ylabel('regret')
+        plt.legend()
+        plt.savefig('reg.jpeg')
+        
+    N = np.arange(0, len(indices))
+    plt.figure(figsize = (10, 6))
+    plt.scatter(N, indices, marker = 'o')    
+    plt.xlabel('time step')
+    plt.ylabel('index')
+    plt.legend()
+    plt.savefig('indices_{}.jpeg'.format(T))
+    plt.close()
+   
+    if T == 1:
+        
+        plt.figure(figsize = (10,6))
+        plt.plot(X[:, 0], X[:, 1], 'x')
+        plt.plot(X[indices, 0], X[indices, 1], 'o', label = 'sampled')
+        plt.plot(X[index, 0], X[index, 1], 'o', color = 'red', label = 'u*')
+        plt.xlabel('u_0')
+        plt.ylabel('u_1')
+        plt.title('Feasible set of u for T = 1')
+        plt.legend()
+        plt.savefig('inputs.jpeg')
+        plt.close()
+        
     #final state distribution
     deviation = 0
-    sim = 2000
+    sim = 3000
     count1 = 0
     for t in range(0, sim):
         w = np.random.multivariate_normal(np.zeros(n*T), np.eye(n*T)*0.1)
@@ -587,7 +594,9 @@ for T in T_list:
     dev.append(deviation)
     count1 = sum(d <= epsilon for d in x1)
     ratios.append(count1/sim)
-    norm.append(np.linalg.norm(X[index]))
+    print(X[index, :])
+    print(X[index, :].reshape(T, m)[::-1].reshape(-1))
+    norm.append(X[index, :].reshape(T, m)[::-1].reshape(-1).T @ Q_tilde @ X[index, :].reshape(T, m)[::-1].reshape(-1))
     s = np.array(s)
     filename2 = os.path.join(delta_folder, 'fstate-{}-{}-{}.jpeg'.format(delta, epsilon, T))
     plt.figure(figsize = (10,6))
@@ -605,23 +614,15 @@ for T in T_list:
     plt.savefig(filename2)
     plt.close()
 
+
 N = np.arange(0, len(dev))
 plt.figure(figsize = (10,6))
-plt.plot(N, dev,'x', label = 'offline_gp')
+plt.plot(N, dev,'x--', label = 'offline_gp')
 # N = np.arange(0, len(x2_dev))
 plt.plot(N, x2_dev, label = 'chebyshev')
 plt.plot(N, x3_dev, label = 'epsilon sd')
 plt.plot(N, x1_dev, label = '2nd order state dev')
 plt.plot(N, x4_dev, label = 'first order')
-# plt.plot(N, x5_dev, label = 'lambda u')
-
-# plt.semilogy(N, first_avg, label = 'det state dev')
-# plt.semilogy(N, modeld, label = 'model state dev')
-# plt.xlabel('time horizon')
-# plt.ylabel('State deviation')
-# plt.title('avg state deviation vs time horizon, delta = {}'.format(delta))
-# plt.legend()
-# plt.savefig('dev-T-{}-{}.jpeg'.format(epsilon, delta))
 plt.xlabel('time horizon')
 plt.ylabel('state dev')
 plt.title('avg state deviation')
@@ -629,10 +630,8 @@ plt.legend()
 plt.savefig('dev-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
 plt.close()
 
-
-
 plt.figure(figsize = (10,6))
-plt.plot(N, norm, 'x', label = 'offline gp')
+plt.plot(N, norm, 'x--', label = 'offline gp')
 plt.plot(N, chebu, label = 'cheby norm')
 plt.plot(N, epu, label = 'epsilon norm')
 plt.plot(N, secu, label = 'second order norm')
@@ -641,9 +640,10 @@ plt.plot(N, firstu, label = 'first order norm')
 plt.xlabel('time horizon')
 plt.ylabel('u* norm')
 plt.legend()
+plt.grid(True)
 plt.savefig('norm-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
 plt.close()
-    
+
 
 N = np.arange(0, len(ratios))
 plt.figure(figsize = (10, 6))
@@ -652,7 +652,13 @@ plt.xlabel('time horizon')
 plt.ylabel('ratio')
 plt.title('final state ratio inside epsilon ball')
 plt.legend()
+plt.grid(True)
 plt.savefig('off_ratio.jpeg')
 plt.close()
 
-  
+plt.figure(figsize = (10,6))
+diff = np.abs(np.array(norm) - np.array(chebu))
+plt.plot(N, diff, label = 'norm difference')
+plt.legend()
+plt.savefig('diff.jpeg')
+plt.close()
