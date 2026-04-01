@@ -37,7 +37,7 @@ state_folder = 'states_{}'.format(name)
 diff_folder = 'diffs_{}'.format(name)
 delta_folder = 'traj_{}'.format(delta)
 exact_folder = 'traj_{}'.format(delta)
-epsilon = 2.4
+epsilon = 3.0
 os.makedirs(norm_folder, exist_ok=True)
 os.makedirs(state_folder, exist_ok=True)
 os.makedirs(diff_folder, exist_ok=True)
@@ -544,4 +544,7 @@ plt.grid(True)
 plt.xticks(T_list)
 plt.savefig('lambda_star.jpeg')
 plt.close()
+
+
+
 
