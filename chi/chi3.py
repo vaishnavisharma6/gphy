@@ -66,6 +66,10 @@ x4_dev = []
 x5_dev = []
 x6_dev = []
 
+tdev1 = []
+tdev3 = []
+tdev5 = []
+
 g1 = []
 g2 = []
 g3 = []
@@ -334,6 +338,12 @@ for t in T_list:
         s5.append(x5T)
         s6.append(x6T)
 
+    
+    tdev1.append(np.linalg.norm(C_T @ u_convex + b))
+    tdev3.append(np.linalg.norm(C_T @ u_c3 + b))
+    tdev5.append(np.linalg.norm(C_T @ u_c5 + b))
+
+
     count1 = sum(d <= epsilon for d in x1)    
     ratios1.append(count1/2000)
     count2 = sum(d <= epsilon for d in x2)
@@ -495,8 +505,11 @@ plt.close()
 plt.figure(figsize = (10,6))
 
 plt.plot(T_list, x3_dev, 'o-', label = 'mahalanobis')
+plt.plot(T_list, tdev3, '^--', label = 'mahalanobis theoretical')
 plt.plot(T_list, x1_dev,'o-',  label = 'second order moment')
+plt.plot(T_list, tdev1, '^--', label = 'second order theoretical')
 plt.plot(T_list, x5_dev, 'o-', label = 'non-central chi')
+plt.plot(T_list, tdev5, '^--', label = 'non-central chi theoretical')
 # plt.plot(T_list, x6_dev, 'o-', label = 'marc' )
 plt.xlabel('time horizon')
 plt.ylabel('state dev')
