@@ -20,10 +20,11 @@ import GPy
 
 #----------------------------------------------------------------------------------------
 # fixed system parameters
-n, m = 2, 2
-x_0 = np.array([0.0, 0.0])
 
-T_list = range(1, 50, 5)  
+n, m = 2, 2
+x_0 = np.array([1.0, 3.0])
+x_f = np.array([4.0, 5.0])
+T_list = range(1, 50, 2)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
 delta = 0.9
@@ -37,7 +38,7 @@ state_folder = 'states_{}'.format(name)
 diff_folder = 'diffs_{}'.format(name)
 delta_folder = 'traj_{}'.format(delta)
 exact_folder = 'traj_{}'.format(delta)
-epsilon = 3.0
+epsilon = 2.4
 os.makedirs(norm_folder, exist_ok=True)
 os.makedirs(state_folder, exist_ok=True)
 os.makedirs(diff_folder, exist_ok=True)
@@ -87,6 +88,7 @@ ratios4 = []
 ratios5 = []
 ratios6 = []
 
+
 def find_lambda_star(n, epsilon, delta):
     """
     Solves F_{chi^2_n(lambda)}(epsilon^2) = delta
@@ -111,7 +113,7 @@ def find_lambda_star(n, epsilon, delta):
     # Lower bound = 0
     # Upper bound chosen large enough
     lam_lower = 0.0
-    lam_upper = 1e4
+    lam_upper = 1e11
 
     # Ensure bracket contains root
     if equation(lam_lower) * equation(lam_upper) > 0:
@@ -177,14 +179,17 @@ def solve_lambda(C_T, Qp, V, b, gamma, tol=1e-10, max_iter=1000):
     return mid
 
 
-for t in T_list:
-    A,B, NT = get_system(name, n, m, t, seed=0)
-    U = np.random.randn(m * t, 1)
 
-        # Compute reachable final state
-    x_f = np.linalg.matrix_power(A, t) @ x_0.reshape(-1, 1) + NT @ U
-    x_f =  x_f.reshape(-1)
-   
+
+for t in T_list:
+    np.random.seed(0)
+    A,B, NT = get_system(name, n, m, t, seed=0)
+    # U = np.random.randn(m * t, 1)
+
+    #     # Compute reachable final state
+    # x_f = np.linalg.matrix_power(A, t) @ x_0.reshape(-1, 1) + NT @ U
+    # x_f =  x_f.reshape(-1)
+
     # Construct N_T and C_T
     N_T = np.eye(n)
     C_T = NT
@@ -196,7 +201,7 @@ for t in T_list:
     # D = np.random.randn(n*t, n*t)
     # sigma_w = D @ D.T
     sigma_w = np.eye(n*t) * 0.1
-    sigma_z = np.linalg.matrix_power(A, t) @ sigma_0 @ np.linalg.matrix_power(A, t).T + N_T @ sigma_w @ N_T.T
+    sigma_z =  N_T @ sigma_w @ N_T.T
     traceSigma = np.trace(sigma_z)
 
     tau = 2 * np.trace(sigma_z @ sigma_z)
@@ -238,7 +243,7 @@ for t in T_list:
     u3 = cp.Variable(m*t)
     u5 = cp.Variable(m*t)
     u6 = cp.Variable(m*t)
-  
+
     objective = cp.Minimize(cp.quad_form(u, Q_tilde))
     objective2 = cp.Minimize(cp.quad_form(u2, Q_tilde))
     objective3 = cp.Minimize(cp.quad_form(u3, Q_tilde))
@@ -269,7 +274,7 @@ for t in T_list:
     u_c3 = u3.value #epsilon sd
     u_c5 = u5.value
     u_c6 = u6.value
-  
+
     w = np.random.randn(n*t)
     x = x_f - N_T @ w
     AT = np.linalg.matrix_power(A, t)
@@ -289,7 +294,6 @@ for t in T_list:
 
     # --- Simulate both systems ---
     np.random.seed(0)
-   
     x1 = []
     x2 = []
     x3 = []
@@ -301,6 +305,8 @@ for t in T_list:
     s3 = []
     s5 = []
     s6 = []
+
+
     for j in range(0, 2000):
         w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*0.1)
         x1T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_convex + N_T @ w  # second order
@@ -312,8 +318,8 @@ for t in T_list:
         
         
         x2.append(np.linalg.norm(x2T-x_f))
-      
-       
+    
+    
         x3.append(np.linalg.norm(x3T-x_f))
         
         x5.append(np.linalg.norm(x5T - x_f))
@@ -344,7 +350,7 @@ for t in T_list:
     x3_dev.append(np.average(x3))
     x5_dev.append(np.average(x5))
     x6_dev.append(np.average(x6))
-   
+
     s1 = np.array(s1)
     s2 = np.array(s2)
     s3 = np.array(s3)
@@ -358,7 +364,7 @@ for t in T_list:
     u_c5 = u5.value.reshape(-1, 1)
     u_c6 = u6.value.reshape(-1, 1)
 
- 
+
     cheb_norm = float(u_c2.T @ Q_tilde @ u_c2)
     ep_norm = float(u_c3.T @ Q_tilde @ u_c3)
     sec_norm = float(u_convex.T @ Q_tilde @ u_convex)
@@ -465,24 +471,26 @@ plt.xlabel('time horizon')
 plt.ylabel('lambda*')
 plt.savefig('lambda.jpeg')
 plt.close()
-   
+
 N = np.arange(0, len(ratios1))
 plt.figure(figsize = (10, 6))
-plt.plot(T_list, ratios3, label = 'mahalanobis')
-plt.plot(T_list, ratios1, label = 'second order moment')
+plt.plot(T_list, ratios3, '^-',label = 'mahalanobis')
+plt.plot(T_list, ratios1, '^-',label = 'second order moment')
 # plt.plot(T_list, ratios2, label = 'chebyshev')
 
 # plt.plot(T_list, ratios4, label = 'det')
-plt.plot(T_list, ratios5, label = 'non-central chi')
+plt.plot(T_list, ratios5,'^-', label = 'non-central chi')
 # plt.plot(T_list, ratios6, label = 'marc')
 
 plt.xlabel('time horizon')
 plt.ylabel('ratio')
 plt.title('final state ratio inside epsilon ball')
 plt.legend()
+plt.grid(True)
+plt.xticks(T_list)
 plt.savefig('ratio.jpeg')
 plt.close()
-   
+
 
 plt.figure(figsize = (10,6))
 

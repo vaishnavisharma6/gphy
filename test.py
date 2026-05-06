@@ -12,14 +12,22 @@ yup = y + 0.2
 # plt.legend(labels = ["fill between"])
 # plt.show()
 
-U = np.linspace(-5, 5, 3)[:, None]
-S = np.linspace(-5, 5, 3)[:, None]
-U_grid, S_grid = np.meshgrid(U, S)
+# U = np.linspace(-5, 5, 3)[:, None]
+# S = np.linspace(-5, 5, 3)[:, None]
+# U_grid, S_grid = np.meshgrid(U, S)
 
-points = np.column_stack([U_grid.ravel(), S_grid.ravel()])
-print(points)
+# points = np.column_stack([U_grid.ravel(), S_grid.ravel()])
+# print(points)
 
-x = np.linspace(-100, 100, 1000)
-y = -x**2 + 4*x
-plt.plot(x, y)
-plt.savefig('test.jpeg')
+# x = np.linspace(-100, 100, 1000)
+# y = -x**2 + 4*x
+# plt.plot(x, y)
+# plt.savefig('test.jpeg')
+
+cols = []
+m , n = 2,2
+M = np.zeros((m, n))
+
+col = np.array([1, 2]).reshape(-1, 1)
+M = np.hstack((M, col))
+print(M)
