@@ -186,7 +186,6 @@ def solve_lambda(C_T, Qp, V, b, gamma, tol=1e-10, max_iter=1000):
 
 
 for t in T_list:
-    np.random.seed(0)
     A,B, NT = get_system(name, n, m, t, seed=0)
     # U = np.random.randn(m * t, 1)
 
@@ -318,19 +317,19 @@ for t in T_list:
         x3T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c3 + N_T @ w  # epsilon 
         x5T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c5 + N_T @ w
         x6T = np.linalg.matrix_power(A, t)@x_0 + C_T @ u_c6 + N_T @ w
-        x1.append(np.linalg.norm(x1T-x_f))
+        x1.append(x1T-x_f)
         
         
-        x2.append(np.linalg.norm(x2T-x_f))
+        x2.append(x2T-x_f)
     
     
-        x3.append(np.linalg.norm(x3T-x_f))
+        x3.append(x3T-x_f)
         
-        x5.append(np.linalg.norm(x5T - x_f))
-        count5 = sum(d <= epsilon for d in x5)
+        x5.append(x5T - x_f)
+        count5 = sum(np.linalg.norm(d) <= epsilon for d in x5)
 
-        x6.append(np.linalg.norm(x6T - x_f))
-        count6 = sum(d <= epsilon for d in x6)
+        x6.append(x6T - x_f)
+        count6 = sum(np.linalg.norm(d) <= epsilon for d in x6)
         
         s1.append(x1T)
         s2.append(x2T)
@@ -344,28 +343,29 @@ for t in T_list:
     tdev5.append(np.linalg.norm(C_T @ u_c5 + b))
 
 
-    count1 = sum(d <= epsilon for d in x1)    
+    count1 = sum(np.linalg.norm(d) <= epsilon for d in x1)    
     ratios1.append(count1/2000)
-    count2 = sum(d <= epsilon for d in x2)
+    count2 = sum(np.linalg.norm(d) <= epsilon for d in x2)
     ratios2.append(count2/2000)
-    count3 = sum(d <= epsilon for d in x3)
+    count3 = sum(np.linalg.norm(d) <= epsilon for d in x3)
     ratios3.append(count3/2000)
     ratios5.append(count5/2000)
     ratios6.append(count6/2000)
 
 
 
-    x1_dev.append(np.average(x1))
-    x2_dev.append(np.average(x2))
-    x3_dev.append(np.average(x3))
-    x5_dev.append(np.average(x5))
-    x6_dev.append(np.average(x6))
+    x1_dev.append(np.linalg.norm(np.mean(x1, axis = 0)))
+    x2_dev.append(np.linalg.norm(np.mean(x2, axis = 0)))
+    x3_dev.append(np.linalg.norm(np.mean(x3, axis = 0)))
+    x5_dev.append(np.linalg.norm(np.mean(x5, axis = 0)))
+    x6_dev.append(np.linalg.norm(np.mean(x6, axis = 0)))
 
     s1 = np.array(s1)
     s2 = np.array(s2)
     s3 = np.array(s3)
     s5 = np.array(s5)
     s6 = np.array(s6)
+
 
     # --- Record metrics ---
     u_convex = u.value.reshape(-1, 1)
@@ -484,12 +484,12 @@ plt.close()
 
 N = np.arange(0, len(ratios1))
 plt.figure(figsize = (10, 6))
-plt.plot(T_list, ratios3, '^-',label = 'mahalanobis')
-plt.plot(T_list, ratios1, '^-',label = 'second order moment')
+plt.semilogy(T_list, ratios3, '^-',label = 'mahalanobis')
+plt.semilogy(T_list, ratios1, '^-',label = 'second order moment')
 # plt.plot(T_list, ratios2, label = 'chebyshev')
 
 # plt.plot(T_list, ratios4, label = 'det')
-plt.plot(T_list, ratios5,'^-', label = 'non-central chi')
+plt.semilogy(T_list, ratios5,'^-', label = 'non-central chi')
 # plt.plot(T_list, ratios6, label = 'marc')
 
 plt.xlabel('time horizon')
@@ -569,3 +569,32 @@ plt.close()
 
 
 
+sim_list = [100, 500, 1000, 2000, 5000, 10000, 20000]
+errors = []
+
+mu_theory = C_T @ u_convex + b
+AT = np.linalg.matrix_power(A, t)
+
+np.random.seed(0)
+
+for num_sim in sim_list:
+    s1 = []
+
+    for j in range(num_sim):
+        w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*0.1)
+        x1T = AT @ x_0 + C_T @ u_convex + N_T @ w
+        s1.append(x1T)
+
+    s1 = np.array(s1)
+
+    emp_mean_error = np.mean(s1 - x_f, axis=0)
+    error = np.linalg.norm(emp_mean_error - mu_theory)
+
+    errors.append(error)
+
+plt.figure(figsize=(8,5))
+plt.loglog(sim_list, errors, 'o-')
+plt.xlabel("number of simulations")
+plt.ylabel("error")
+plt.grid(True)
+plt.show()
