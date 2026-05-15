@@ -22,7 +22,7 @@ import GPy
 # fixed system parameters
 
 n, m = 2, 2
-x_0 = np.array([1.0, 3.0])
+x_0 = np.array([0.0, 0.0])
 x_f = np.array([4.0, 5.0])
 T_list = range(1, 50, 2)  
 sigma_0 = np.eye(n) * 0.1
@@ -523,10 +523,10 @@ plt.close()
 plt.figure(figsize = (10,6))
 
 # plt.plot(T_list, chebu, 'o-', label = 'cheby norm')
-plt.plot(T_list, epu, 'o-', label = 'mahalanobis')
-plt.plot(T_list, secu, 'o-', label = 'second order moment')
+plt.semilogy(T_list, epu, 'o-', label = 'mahalanobis')
+plt.semilogy(T_list, secu, 'o-', label = 'second order moment')
 # plt.plot(T_list, firstu, 'o-', label = 'first order norm')
-plt.plot(T_list, exact, 'o-', label = 'non-central chi')
+plt.semilogy(T_list, exact, 'o-', label = 'non-central chi')
 # plt.plot(T_list, marcu, 'o-', label = 'marc')
 plt.xlabel('time horizon')
 plt.ylabel('u* norm')
@@ -597,4 +597,4 @@ plt.loglog(sim_list, errors, 'o-')
 plt.xlabel("number of simulations")
 plt.ylabel("error")
 plt.grid(True)
-plt.show()
+plt.savefig('random.jpeg')
