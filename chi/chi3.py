@@ -192,6 +192,8 @@ for t in T_list:
     #     # Compute reachable final state
     # x_f = np.linalg.matrix_power(A, t) @ x_0.reshape(-1, 1) + NT @ U
     # x_f =  x_f.reshape(-1)
+    print(A)
+    print(B)
 
     # Construct N_T and C_T
     N_T = np.eye(n)
@@ -310,7 +312,7 @@ for t in T_list:
     s6 = []
 
 
-    for j in range(0, 2000):
+    for j in range(0, 5000):
         w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*0.1)
         x1T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_convex + N_T @ w  # second order
         x2T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c2 + N_T @ w  # chebyshev
@@ -344,13 +346,13 @@ for t in T_list:
 
 
     count1 = sum(np.linalg.norm(d) <= epsilon for d in x1)    
-    ratios1.append(count1/2000)
+    ratios1.append(count1/5000)
     count2 = sum(np.linalg.norm(d) <= epsilon for d in x2)
-    ratios2.append(count2/2000)
+    ratios2.append(count2/5000)
     count3 = sum(np.linalg.norm(d) <= epsilon for d in x3)
-    ratios3.append(count3/2000)
-    ratios5.append(count5/2000)
-    ratios6.append(count6/2000)
+    ratios3.append(count3/5000)
+    ratios5.append(count5/5000)
+    ratios6.append(count6/5000)
 
 
 
