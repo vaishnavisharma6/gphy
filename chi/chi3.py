@@ -21,14 +21,14 @@ import GPy
 #----------------------------------------------------------------------------------------
 # fixed system parameters
 
-n, m = 2, 2
-x_0 = np.array([0.0, 0.0])
-x_f = np.array([4.0, 5.0])
-T_list = range(1, 50, 2)  
+n, m = 4, 4
+x_0 = np.array([1.0, 2.0, 3.0, 4.0])
+x_f = np.array([4.0, 5.0, 6.0, 7.0])
+T_list = range(1, 25, 2)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
-delta = 0.9
-Q = np.diag([2.0, 3.0])
+delta = 0.3
+Q = np.diag([2.0, 3.0, 4.0, 5.0])
 q = norm.ppf(1 - delta)
 u_norm_diff_list = []
 state_dev_diff_list = []
@@ -44,27 +44,20 @@ os.makedirs(state_folder, exist_ok=True)
 os.makedirs(diff_folder, exist_ok=True)
 os.makedirs(delta_folder, exist_ok = True)
 
-chebd = []
+
 secd = []
 epd = []
 firstd = []
 modeld = []
 
-chebu = []
 secu = []
 epu = []
-firstu = []
-modelu = []
 exact = []
-marcu = []
 alleps = []
 
 x1_dev = []
-x2_dev = []
 x3_dev = []
-x4_dev = []
 x5_dev = []
-x6_dev = []
 
 tdev1 = []
 tdev3 = []
@@ -86,27 +79,20 @@ l4 = []
 l5 = []
 
 ratios1 = []
-ratios2 = []
 ratios3 = []
-ratios4 = []
 ratios5 = []
-ratios6 = []
 
 
+#numerically find lambda*
 def find_lambda_star(n, epsilon, delta):
     """
     Solves F_{chi^2_n(lambda)}(epsilon^2) = delta
     for lambda >= 0.
-    
     Parameters:
     n       : degrees of freedom
     epsilon : radius (so we evaluate CDF at epsilon^2)
     delta   : probability level
-    
-    Returns:
-    lambda_star
     """
-    
     x = epsilon**2
 
     # Define equation to solve
@@ -127,6 +113,7 @@ def find_lambda_star(n, epsilon, delta):
     
     return lambda_star
 
+#optimal lagrange multiplier
 def solve_lambda(C_T, Qp, V, b, gamma, tol=1e-10, max_iter=1000):
     """
     Computes optimal lambda*.
@@ -187,217 +174,132 @@ def solve_lambda(C_T, Qp, V, b, gamma, tol=1e-10, max_iter=1000):
 
 for t in T_list:
     A,B, NT = get_system(name, n, m, t, seed=0)
-    # U = np.random.randn(m * t, 1)
-
-    #     # Compute reachable final state
-    # x_f = np.linalg.matrix_power(A, t) @ x_0.reshape(-1, 1) + NT @ U
-    # x_f =  x_f.reshape(-1)
-    print(A)
-    print(B)
-
+    if t == 1:
+        print(A)
+        print(B)
     # Construct N_T and C_T
     N_T = np.eye(n)
     C_T = NT
     for i in range(1, t):
         N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
-        # C_T = np.hstack((C_T, np.linalg.matrix_power(A, i) @ B))
 
-    # covariance and bias
-    # D = np.random.randn(n*t, n*t)
-    # sigma_w = D @ D.T
     sigma_w = np.eye(n*t) * 0.1
     sigma_z =  N_T @ sigma_w @ N_T.T
     traceSigma = np.trace(sigma_z)
 
     tau = 2 * np.trace(sigma_z @ sigma_z)
     b = (np.linalg.matrix_power(A, t) @ x_0) - x_f
-    b_cheb =  x_f - (np.linalg.matrix_power(A, t) @ x_0) 
     vals = np.linalg.eigvals(sigma_z)
     eig = np.max(vals)
-    # convex constraint gamma
-    # gamma = epsilon**2 - traceSigma  #second order constraint
     gamma = epsilon**2 - n
-    # r_cheb = epsilon**2 - 2* epsilon * math.sqrt(traceSigma/delta) + (traceSigma/delta)  #chebyshev
-    r_cheb = (epsilon - math.sqrt(n/1-delta))**2
     dev = epsilon**2  #epsilon sd
-    lambda_star = find_lambda_star(n, epsilon, delta)
+    lambda_star = find_lambda_star(n, epsilon, 1-delta)
     marc = (epsilon - np.sqrt(-2 * math.log(1-delta)))**2
     Q_tilde = block_diag(*([Q] * t))
 
-    g1.append(r_cheb)
-    g2.append(dev)
-    g3.append(gamma)
-    g4.append(lambda_star)
-    g5.append(marc)
-    
-    one = solve_lambda(C_T, Q_tilde, sigma_z, b, r_cheb)
-    two = solve_lambda(C_T, Q_tilde, sigma_z, b, dev)
-    three = solve_lambda(C_T, Q_tilde, sigma_z, b, gamma)
-    four = solve_lambda(C_T, Q_tilde, sigma_z, b,lambda_star)
-    five = solve_lambda(C_T, Q_tilde, sigma_z, b, marc)
 
-    l1.append(one)
-    l2.append(two)
-    l3.append(three)
-    l4.append(four)
-    l5.append(five)
-    
     # --- Convex QCQP ---
     u = cp.Variable(m*t)
-    u2 = cp.Variable(m*t)
     u3 = cp.Variable(m*t)
     u5 = cp.Variable(m*t)
-    u6 = cp.Variable(m*t)
 
     objective = cp.Minimize(cp.quad_form(u, Q_tilde))
-    objective2 = cp.Minimize(cp.quad_form(u2, Q_tilde))
     objective3 = cp.Minimize(cp.quad_form(u3, Q_tilde))
     objective5 = cp.Minimize(cp.quad_form(u5, Q_tilde))
-    objective6 = cp.Minimize(cp.quad_form(u6, Q_tilde))
 
     f = cp.quad_form(C_T @ u + b, np.linalg.inv(sigma_z))
-    f2 = cp.quad_form(C_T @ u2 + b, np.linalg.inv(sigma_z))
     f3 = cp.quad_form(C_T @ u3 + b, np.linalg.inv(sigma_z))
     f5 = cp.quad_form(C_T@ u5 + b, np.linalg.inv(sigma_z))
-    f6 = cp.quad_form(C_T@ u6 + b, np.linalg.inv(sigma_z))
 
 
-    prob = cp.Problem(objective, [f <= gamma])
-    prob2 = cp.Problem(objective2, [f2 <= r_cheb])
-    prob3 = cp.Problem(objective3, [f3 <= dev])
-    prob5 = cp.Problem(objective5, [f5 <= lambda_star])
-    prob6 = cp.Problem(objective6, [f6 <= marc])
+    prob = cp.Problem(objective, [f <= gamma]) #second order
+    prob3 = cp.Problem(objective3, [f3 <= dev]) #mahalanobis
+    prob5 = cp.Problem(objective5, [f5 <= lambda_star]) #non-central chi
 
     prob.solve(solver=cp.SCS, verbose=False)
-    prob2.solve(solver = cp.SCS, verbose = False)
     prob3.solve(solver = cp.SCS, verbose = False)
     prob5.solve(solver = cp.SCS, verbose = False)
-    prob6.solve(solver = cp.SCS, verbose = False)
 
     u_convex = u.value  #second order
-    u_c2 = u2.value #chebyshev
     u_c3 = u3.value #epsilon sd
     u_c5 = u5.value
-    u_c6 = u6.value
 
-    w = np.random.randn(n*t)
-    x = x_f - N_T @ w
-    AT = np.linalg.matrix_power(A, t)
-    u_model =  np.linalg.pinv(C_T) @ (x - AT@ x_0)
     if u_convex is None:
-        print(f"Convex solver failed at T={t}")
-        continue
-    if u_c2 is None:
         print(f"Convex solver failed at T={t}")
         continue
     if u_c3 is None:
         print(f'Convex solver failed at T={t}')
     if u_c5 is None:
         print(f'Convex solver failed at T={t}')    
-    if u_c6 is None:
-        print(f'Convex solver failed at T={t}')       
+      
 
     # --- Simulate both systems ---
     np.random.seed(0)
     x1 = []
-    x2 = []
     x3 = []
     x5 = []
-    x6 = []
 
     s1 = []
-    s2 = []
     s3 = []
     s5 = []
-    s6 = []
 
 
     for j in range(0, 5000):
         w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*0.1)
         x1T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_convex + N_T @ w  # second order
-        x2T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c2 + N_T @ w  # chebyshev
         x3T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c3 + N_T @ w  # epsilon 
-        x5T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c5 + N_T @ w
-        x6T = np.linalg.matrix_power(A, t)@x_0 + C_T @ u_c6 + N_T @ w
-        x1.append(x1T-x_f)
+        x5T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c5 + N_T @ w #non-central
         
+        x1.append((x1T-x_f) @ np.linalg.inv(sigma_z) @ (x1T-x_f))
+        x3.append((x3T-x_f))
         
-        x2.append(x2T-x_f)
-    
-    
-        x3.append(x3T-x_f)
-        
-        x5.append(x5T - x_f)
-        count5 = sum(np.linalg.norm(d) <= epsilon for d in x5)
-
-        x6.append(x6T - x_f)
-        count6 = sum(np.linalg.norm(d) <= epsilon for d in x6)
+        x5.append((x5T - x_f) @ np.linalg.inv(sigma_z) @ (x5T - x_f))
+        count5 = sum(d <= epsilon**2 for d in x5)
         
         s1.append(x1T)
-        s2.append(x2T)
         s3.append(x3T)
         s5.append(x5T)
-        s6.append(x6T)
 
     
-    tdev1.append(np.linalg.norm(C_T @ u_convex + b))
-    tdev3.append(np.linalg.norm(C_T @ u_c3 + b))
-    tdev5.append(np.linalg.norm(C_T @ u_c5 + b))
+    tdev1.append((C_T @ u_convex + b)@ np.linalg.inv(sigma_z) @ (C_T @ u_convex + b)+n)
+    tdev3.append((C_T @ u_c3 + b)@ np.linalg.inv(sigma_z) @ (C_T @ u_c3 + b)+n )
+    tdev5.append((C_T @ u_c5 + b)@ np.linalg.inv(sigma_z) @ (C_T @ u_c5 + b)+n)
 
 
-    count1 = sum(np.linalg.norm(d) <= epsilon for d in x1)    
-    ratios1.append(count1/5000)
-    count2 = sum(np.linalg.norm(d) <= epsilon for d in x2)
-    ratios2.append(count2/5000)
-    count3 = sum(np.linalg.norm(d) <= epsilon for d in x3)
-    ratios3.append(count3/5000)
+    count1 = np.mean(x1, axis = 0)  
+    ratios1.append(count1)
+    count3 = np.mean(x3, axis = 0) @ np.linalg.inv(sigma_z) @ np.mean(x3, axis = 0)
+    ratios3.append(count3)
     ratios5.append(count5/5000)
-    ratios6.append(count6/5000)
 
-
-
-    x1_dev.append(np.linalg.norm(np.mean(x1, axis = 0)))
-    x2_dev.append(np.linalg.norm(np.mean(x2, axis = 0)))
-    x3_dev.append(np.linalg.norm(np.mean(x3, axis = 0)))
-    x5_dev.append(np.linalg.norm(np.mean(x5, axis = 0)))
-    x6_dev.append(np.linalg.norm(np.mean(x6, axis = 0)))
+    x1_dev.append((np.mean(x1, axis = 0)))
+    x3_dev.append((np.mean(x3, axis = 0)))
+    x5_dev.append((np.mean(x5, axis = 0)))
 
     s1 = np.array(s1)
-    s2 = np.array(s2)
     s3 = np.array(s3)
     s5 = np.array(s5)
-    s6 = np.array(s6)
-
 
     # --- Record metrics ---
     u_convex = u.value.reshape(-1, 1)
-    u_c2     = u2.value.reshape(-1, 1)
     u_c3     = u3.value.reshape(-1, 1)
     u_c5 = u5.value.reshape(-1, 1)
-    u_c6 = u6.value.reshape(-1, 1)
 
-
-    cheb_norm = float(u_c2.T @ Q_tilde @ u_c2)
     ep_norm = float(u_c3.T @ Q_tilde @ u_c3)
     sec_norm = float(u_convex.T @ Q_tilde @ u_convex)
-    model_norm = float(u_model.T @ Q_tilde @ u_model)
     exact_norm = float(u_c5.T @ Q_tilde @ u_c5)
-    marc_norm = float(u_c6.T @ Q_tilde @ u_c6)
 
 
-    chebu.append(cheb_norm)
     epu.append(ep_norm)
     secu.append(sec_norm)
     exact.append(exact_norm)
-    marcu.append(marc_norm)
+
 
     center = (x_f[0], x_f[1])
 
     theta = np.linspace(0, 2*np.pi, 400)
     x = center[0] + epsilon * np.cos(theta)
     y = center[1] + epsilon * np.sin(theta)
-
-
 
 
     filename1 = os.path.join(delta_folder, '2nd-{}-{}.jpeg'.format(delta, t))
@@ -411,24 +313,9 @@ for t in T_list:
                         fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('second order moment, horizon = {}, ratio = {}'.format(t, count1/2000))
+    plt.title('second order moment, horizon = {}, ratio = {}'.format(t, count1/5000))
 
     plt.savefig(filename1)
-
-
-    filename2 = os.path.join(delta_folder, 'cheb-{}-{}-{}.jpeg'.format(delta, epsilon, t))
-    plt.figure(figsize = (10,6))
-    plt.scatter(s2[:, 0], s2[:, 1], marker = 'x')
-    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    plt.gca().set_aspect('equal', adjustable='box')
-    circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
-                        fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
-    plt.gca().add_patch(circle)
-    plt.xlabel('x1')
-    plt.ylabel('x2')
-    plt.title('chebyshev, horizon = {}, ratio = {}'.format(t, count2/2000))
-    plt.legend()
-    plt.savefig(filename2)
 
 
     filename3 = os.path.join(delta_folder, 'eps-{}-{}-{}.jpeg'.format(delta, epsilon, t))
@@ -441,7 +328,7 @@ for t in T_list:
     plt.gca().add_patch(circle)
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('mahalanobis, horizon = {}, ratio = {}'.format(t, count3/2000))
+    plt.title('mahalanobis, horizon = {}, ratio = {}'.format(t, count3/5000))
     plt.legend()
     plt.savefig(filename3)
 
@@ -455,48 +342,26 @@ for t in T_list:
     plt.gca().add_patch(circle)
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('non-central chi, horizon = {}, ratio = {}'.format(t, count5/2000))
+    plt.title('non-central chi, horizon = {}, ratio = {}'.format(t, count5/5000))
     plt.legend()
     plt.savefig(filename5)
 
-    filename6 = os.path.join(delta_folder, 'marc-{}-{}-{}.jpeg'.format(delta, epsilon, t))
-    plt.figure(figsize = (10,6))
-    plt.scatter(s6[:, 0], s6[:, 1], marker = 'x')
-    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    plt.gca().set_aspect('equal', adjustable='box')
-    circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
-                        fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
-    plt.gca().add_patch(circle)
-    plt.xlabel('x1')
-    plt.ylabel('x2')
-    plt.title('marc, horizon = {}, ratio = {}'.format(t, count6/2000))
-    plt.legend()
-    plt.savefig(filename6)
-
-plt.close()
-
-plt.figure(figsize = (10, 6))
-N = np.arange(0, len(all_lam))
-plt.plot(N, all_lam, label = 'lambda*')
-plt.title('lambda* vs time horizon')
-plt.xlabel('time horizon')
-plt.ylabel('lambda*')
-plt.savefig('lambda.jpeg')
 plt.close()
 
 N = np.arange(0, len(ratios1))
 plt.figure(figsize = (10, 6))
-plt.semilogy(T_list, ratios3, '^-',label = 'mahalanobis')
-plt.semilogy(T_list, ratios1, '^-',label = 'second order moment')
-# plt.plot(T_list, ratios2, label = 'chebyshev')
-
-# plt.plot(T_list, ratios4, label = 'det')
-plt.semilogy(T_list, ratios5,'^-', label = 'non-central chi')
-# plt.plot(T_list, ratios6, label = 'marc')
+plt.plot(T_list, ratios3, '^-',label = r'$\mu_e^\top \Sigma_e^{-1}\mu_e$')
+plt.plot(T_list, ratios1, '^-',label = r'$E[e^\top \Sigma_e^{-1}e]$')
+plt.plot(T_list, ratios5,'^-', label = r'$P\{e^\top \Sigma_e^{-1}e <= \epsilon^2\}$')
+plt.axhline(y=epsilon**2,
+            color='black',
+            linestyle=':',
+            linewidth=2,
+            label=r'$\epsilon^2$')
 
 plt.xlabel('time horizon')
-plt.ylabel('ratio')
-plt.title('final state ratio inside epsilon ball')
+plt.ylabel('')
+plt.title('Empirical constraint staisfaction')
 plt.legend()
 plt.grid(True)
 plt.xticks(T_list)
@@ -524,12 +389,10 @@ plt.close()
 
 plt.figure(figsize = (10,6))
 
-# plt.plot(T_list, chebu, 'o-', label = 'cheby norm')
+
 plt.semilogy(T_list, epu, 'o-', label = 'mahalanobis')
 plt.semilogy(T_list, secu, 'o-', label = 'second order moment')
-# plt.plot(T_list, firstu, 'o-', label = 'first order norm')
 plt.semilogy(T_list, exact, 'o-', label = 'non-central chi')
-# plt.plot(T_list, marcu, 'o-', label = 'marc')
 plt.xlabel('time horizon')
 plt.ylabel('u* norm')
 plt.legend()
@@ -539,64 +402,145 @@ plt.savefig('norm-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
 plt.close()
 
 
+# --------------------------------------------------
+# Cost vs gamma for fixed horizon T = 6
+# --------------------------------------------------
+
+T_list = [4, 6, 8]
+lambda_star = find_lambda_star(n, epsilon, 1-delta)
+
+all_gamma = {}
+all_cost = {}
+all_lambda = {}
+all_dev = {}
+
+for T in T_list:
+
+    A, B, NT = get_system(name, n, m, T, seed=0)
+
+    N_T = np.eye(n)
+    C_T = NT
+    for i in range(1, T):
+        N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
+
+    b = np.linalg.matrix_power(A, T) @ x_0 - x_f
+
+    sigma_w = np.eye(n*T) * 0.1
+    sigma_z = N_T @ sigma_w @ N_T.T
+
+    Q_tilde = block_diag(*([Q] * T))
+
+    gamma_min = 0.0
+    gamma_max = float(b.T @ np.linalg.inv(sigma_z) @ b)
+
+    gamma_vals = np.linspace(gamma_min, gamma_max, 10)
+
+    cost_vals = []
+    lambda_vals = []
+    dev_vals = []
+
+    for gamma in gamma_vals:
+
+        u = cp.Variable(m*T)
+
+        objective = cp.Minimize(cp.quad_form(u, Q_tilde))
+
+        constraint = (
+            cp.quad_form(
+                C_T @ u + b,
+                np.linalg.inv(sigma_z)
+            ) <= gamma
+        )
+
+        prob = cp.Problem(objective, [constraint])
+        prob.solve(solver=cp.SCS, verbose=False)
+
+        if u.value is None:
+            cost_vals.append(np.nan)
+            lambda_vals.append(np.nan)
+            dev_vals.append(np.nan)
+            continue
+
+        Jstar = float(u.value.T @ Q_tilde @ u.value)
+        cost_vals.append(Jstar)
+
+        try:
+            lam = solve_lambda(
+                C_T,
+                Q_tilde,
+                sigma_z,
+                b,
+                gamma
+            )
+        except:
+            lam = np.nan
+
+        lambda_vals.append(lam)
+
+        idev = []
+        for _ in range(5000):
+            w = np.random.multivariate_normal(
+                np.zeros(n*T),
+                np.eye(n*T)*0.1
+            )
+
+            xT = (
+                np.linalg.matrix_power(A, T) @ x_0
+                + C_T @ u.value
+                + N_T @ w
+            )
+
+            e = xT - x_f
+
+            idev.append(
+                e.T @ np.linalg.inv(sigma_z) @ e
+            )
+
+        dev_vals.append(np.mean(idev))
+
+    all_gamma[T] = gamma_vals
+    all_cost[T] = cost_vals
+    all_lambda[T] = lambda_vals
+    all_dev[T] = dev_vals
+
 plt.figure(figsize=(10,6))
-# plt.plot(T_list, g1, label = 'cheb')
-plt.plot(T_list, g2, label = 'epsilon')
-plt.plot(T_list, g3, label = 'second')
-plt.plot(T_list, g4, label = 'exact')
-# plt.plot(T_list, g5, label = 'marc')
-plt.xlabel('time horizon')
-plt.ylabel('gamma values')
+
+for T in T_list:
+    plt.plot(
+        all_gamma[T],
+        all_cost[T],
+        marker='^',
+        linewidth=2,
+        label=f"T={T}"
+    )
+ 
+
+plt.xlabel(r'$\gamma$')
+plt.ylabel(r'$J^*(\gamma)$')
+plt.title(r'Optimal Cost vs $\gamma$')
 plt.legend()
 plt.grid(True)
-plt.xticks(T_list)
-plt.savefig('gamma.jpeg')
-plt.close()
-
+plt.savefig('cost_vs_gamma_allT.jpeg')
+plt.show()
 
 plt.figure(figsize=(10,6))
-# plt.plot(T_list, l1, label = 'cheb')
-plt.plot(T_list, l2, label = 'epsilon')
-plt.plot(T_list, l3, label = 'second')
-plt.plot(T_list, l4, label = 'exact')
-# plt.plot(T_list, l5, label = 'marc')
-plt.xlabel('time horizon')
-plt.ylabel('lambda*')
+
+
+for T in T_list:
+    plt.plot(
+        all_gamma[T],
+        all_dev[T],
+        marker='^',
+        linewidth=2,
+        label=f"T={T}"
+    )
+
+
+plt.xlabel(r'$\gamma$')
+plt.ylabel(r'$\mathbb{E}[e^\top \Sigma_e^{-1} e]$')
+plt.title(r'Empirical deviation vs $\gamma$')
 plt.legend()
 plt.grid(True)
-plt.xticks(T_list)
-plt.savefig('lambda_star.jpeg')
-plt.close()
+plt.savefig('deviation_vs_gamma_allT.jpeg')
+plt.show()
 
-
-
-
-sim_list = [100, 500, 1000, 2000, 5000, 10000, 20000]
-errors = []
-
-mu_theory = C_T @ u_convex + b
-AT = np.linalg.matrix_power(A, t)
-
-np.random.seed(0)
-
-for num_sim in sim_list:
-    s1 = []
-
-    for j in range(num_sim):
-        w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*0.1)
-        x1T = AT @ x_0 + C_T @ u_convex + N_T @ w
-        s1.append(x1T)
-
-    s1 = np.array(s1)
-
-    emp_mean_error = np.mean(s1 - x_f, axis=0)
-    error = np.linalg.norm(emp_mean_error - mu_theory)
-
-    errors.append(error)
-
-plt.figure(figsize=(8,5))
-plt.loglog(sim_list, errors, 'o-')
-plt.xlabel("number of simulations")
-plt.ylabel("error")
-plt.grid(True)
-plt.savefig('random.jpeg')
