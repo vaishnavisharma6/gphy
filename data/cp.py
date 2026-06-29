@@ -699,6 +699,7 @@ all_cost_known = {}
 all_lambda = {}
 all_dev_struct = {}
 all_dev_conf = {}
+all_dev_econf = {}
 all_dev_known = {}
 
 for T in T_list:
@@ -760,6 +761,7 @@ for T in T_list:
 
     dev_struct = []
     dev_conf = []
+    dev_econf = []
     dev_known = []
 
     for gamma in gamma_vals:
@@ -811,6 +813,7 @@ for T in T_list:
 
         idev_struct = []
         idev_conf = []
+        idev_econf = []
         idev_known = []
 
         for _ in range(5000):
@@ -842,18 +845,14 @@ for T in T_list:
             e3 = xT3 - xf
             
 
-            idev_struct.append(
-                e1.T @ np.linalg.inv(sigma_z) @ e1
-            )
-            idev_conf.append(
-                e2.T @ np.linalg.inv(sigmaz) @ e2
-            )
-            idev_known.append(
-                e3.T @ np.linalg.inv(sigmaz) @ e3
-            )
+            idev_struct.append(e1.T @ np.linalg.inv(sigma_z) @ e1)
+            idev_conf.append(e2.T @ np.linalg.inv(sigmaz) @ e2)
+            idev_econf.append(e2.T @ e2)
+            idev_known.append(e3.T @ np.linalg.inv(sigmaz) @ e3)
 
         dev_struct.append(np.mean(idev_struct))
         dev_conf.append(np.mean(idev_conf))
+        dev_econf.append(np.mean(idev_econf))
         dev_known.append(np.mean(idev_known))
 
     all_gamma[T] = gamma_vals
@@ -863,6 +862,7 @@ for T in T_list:
 
     all_dev_struct[T] = dev_struct
     all_dev_conf[T] = dev_conf
+    all_dev_econf[T] = dev_econf
     all_dev_known[T] = dev_known
 
 plt.figure(figsize=(10,6))
@@ -902,17 +902,21 @@ plt.figure(figsize=(10,6))
 for T in T_list:
     plt.plot(all_gamma[T], all_dev_struct[T], marker='o', label=f"Structure, T={T}")
     plt.plot(all_gamma[T], all_dev_conf[T], marker='s', label=f"Conformal, T={T}")
+    plt.plot(all_gamma[T],all_dev_econf[T],marker='^',label=fr"Conformal $E[e^\top e]$, $T={T}$")
     plt.plot(all_gamma[T], all_dev_known[T], '--', marker='^', label=f"Known, T={T}")
 
 
 plt.xlabel(r'$\gamma$')
 plt.ylabel(r'$\mathbb{E}[e^\top \Sigma_e^{-1} e]$')
 plt.title(r'Empirical deviation vs $\gamma$')
-plt.legend()
+plt.legend(
+    loc='center left',          # choose position
+    bbox_to_anchor=(1.02, 0.5), # move legend outside
+    fontsize=10
+)
 plt.grid(True)
+plt.tight_layout()
 plt.savefig('deviation_vs_gamma_allT.jpeg')
-plt.show()
-
 
 T = 8
 
@@ -940,7 +944,7 @@ N_cal = 60
 U = np.random.randn(m*T, N)
 U_cal = np.random.randn(m*T, N_cal)
 
-sigma_vals = np.linspace(0.1, 10, 20)
+sigma_vals = np.linspace(0.1, 2, 20)
 
 # ---------- initialize ONCE ----------
 cost_struct = []
@@ -949,11 +953,11 @@ cost_known = []
 
 dev_struct = []
 dev_conf = []
+dev_econf = []
 dev_known = []
 
 lambda_star = find_lambda_star(n, epsilon, 1-delta)
 
-# Before: for sigma in sigma_vals
 w_train = np.random.multivariate_normal(
     np.zeros(n*T),
     np.eye(n*T),
@@ -962,7 +966,7 @@ w_train = np.random.multivariate_normal(
 # -------------------------------------
 for sigma in sigma_vals:
 
-    sigma_w = np.eye(n*T) * sigma
+    sigma_w = np.eye(n*T) * sigma**2
     sigma_z = N_T @ sigma_w @ N_T.T
 
     X_bar = np.zeros((n, N))
@@ -1042,6 +1046,7 @@ for sigma in sigma_vals:
 
     idev_struct = []
     idev_conf = []
+    idev_econf = []
     idev_known = []
 
     for _ in range(5000):
@@ -1061,10 +1066,12 @@ for sigma in sigma_vals:
 
         idev_struct.append(e1.T @ np.linalg.inv(sigma_z) @ e1)
         idev_conf.append(e2.T @ np.linalg.inv(sigma_z) @ e2)
+        idev_econf.append(e2.T @ e2)
         idev_known.append(e3.T @ np.linalg.inv(sigma_z) @ e3)
 
     dev_struct.append(np.mean(idev_struct))
     dev_conf.append(np.mean(idev_conf))
+    dev_econf.append(np.mean(idev_econf))
     dev_known.append(np.mean(idev_known))
 
 
@@ -1099,6 +1106,8 @@ plt.plot(sigma_vals, dev_struct,
 plt.plot(sigma_vals, dev_conf,
          marker='s', linewidth=2,
          label='Conformal')
+
+plt.plot(sigma_vals, dev_econf, '^--', linewidth = 2, label = r'Conformal $E[e^\top e]$')
 
 plt.plot(sigma_vals, dev_known,
          marker='^', linewidth=2,
