@@ -31,6 +31,11 @@ originalu = []
 originalnd = []
 
 quant = []
+empirical_coverage = {}
+quantiles = {}
+delta_list = [0.30, 0.20, 0.10, 0.05, 0.01]
+num_runs = 20
+N_test = 1000
 
 ratios1 = []
 ratios2 = []
@@ -278,6 +283,27 @@ def get_scores(U_cal, N_cal, CT_hat, NT, CT, t, sigma):
 
     return(np.array(scores))
 
+
+def get_test_scores(U_test, CT_hat, NT, CT, t, sigma):
+
+    scores = []
+
+    for i in range(U_test.shape[1]):
+
+        w = np.random.multivariate_normal(
+            np.zeros(n*t),
+            np.eye(n*t) * sigma
+        )
+
+        x_true = CT @ U_test[:, i] + NT @ w
+        x_pred = CT_hat @ U_test[:, i]
+
+        score = np.linalg.norm(x_true - x_pred)
+
+        scores.append(score)
+
+    return np.array(scores)
+
 def find_lambda_star(n, epsilon, delta):
     """
     Solves F_{chi^2_n(lambda)}(epsilon^2) = delta
@@ -359,9 +385,74 @@ for t in T_list:
     struct_sigma = struct_sigma/ (N*M)
     
     #find 1-delta quantile of scores
-    scores = get_scores(U_cal, N_cal, CT_hat, NT, CT, t, sigma)
+    #####################################################
+# Reviewer experiment: empirical coverage
+#####################################################
+
+    quantiles[t] = []
+    empirical_coverage[t] = {}
+
+    for delta in delta_list:
+
+        coverages = []
+        q_runs = []
+
+        for run in range(num_runs):
+
+            np.random.seed(run)
+
+            scores = get_scores(
+                U_cal,
+                N_cal,
+                CT_hat,
+                NT,
+                CT,
+                t,
+                sigma
+            )
+
+            q = conformal_quantile(scores, delta)
+
+            q_runs.append(q)
+
+            U_test = np.random.randn(m*t, N_test)
+
+            scores_test = get_test_scores(
+                U_test,
+                CT_hat,
+                NT,
+                CT,
+                t,
+                sigma
+            )
+
+            coverages.append(
+                np.mean(scores_test <= q)
+            )
+
+        empirical_coverage[t][delta] = (
+            np.mean(coverages),
+            np.std(coverages)
+    )
+
+        if delta == 0.30:
+            quant.append(np.mean(q_runs))
+
+        quantiles[t].append(np.mean(q_runs))
+
+    delta = 0.30
+
+    scores = get_scores(
+        U_cal,
+        N_cal,
+        CT_hat,
+        NT,
+        CT,
+        t,
+        sigma
+    )
+
     q = conformal_quantile(scores, delta)
-    quant.append(q)
 
     #rhs of all inequalities
     lambda_star = find_lambda_star(n, epsilon, 1-delta)
@@ -701,6 +792,8 @@ all_dev_struct = {}
 all_dev_conf = {}
 all_dev_econf = {}
 all_dev_known = {}
+all_dev_eknown = {}
+all_dev_estruct = {}
 
 for T in T_list:
 
@@ -763,6 +856,8 @@ for T in T_list:
     dev_conf = []
     dev_econf = []
     dev_known = []
+    dev_estruct = []
+    dev_eknown = []
 
     for gamma in gamma_vals:
 
@@ -814,6 +909,8 @@ for T in T_list:
         idev_struct = []
         idev_conf = []
         idev_econf = []
+        idev_estruct = []
+        idev_eknown = []
         idev_known = []
 
         for _ in range(5000):
@@ -847,13 +944,17 @@ for T in T_list:
 
             idev_struct.append(e1.T @ np.linalg.inv(sigma_z) @ e1)
             idev_conf.append(e2.T @ np.linalg.inv(sigmaz) @ e2)
-            idev_econf.append(e2.T @ e2)
             idev_known.append(e3.T @ np.linalg.inv(sigmaz) @ e3)
+            idev_econf.append(e2.T @ e2)
+            idev_estruct.append(e1.T @ e1)
+            idev_eknown.append(e3.T @ e3)
 
         dev_struct.append(np.mean(idev_struct))
         dev_conf.append(np.mean(idev_conf))
         dev_econf.append(np.mean(idev_econf))
         dev_known.append(np.mean(idev_known))
+        dev_estruct.append(np.mean(idev_estruct))
+        dev_eknown.append(np.mean(idev_eknown))
 
     all_gamma[T] = gamma_vals
     all_cost_struct[T] = cost_struct
@@ -863,6 +964,8 @@ for T in T_list:
     all_dev_struct[T] = dev_struct
     all_dev_conf[T] = dev_conf
     all_dev_econf[T] = dev_econf
+    all_dev_estruct[T] = dev_estruct
+    all_dev_eknown[T] = dev_eknown
     all_dev_known[T] = dev_known
 
 plt.figure(figsize=(10,6))
@@ -902,21 +1005,32 @@ plt.figure(figsize=(10,6))
 for T in T_list:
     plt.plot(all_gamma[T], all_dev_struct[T], marker='o', label=f"Structure, T={T}")
     plt.plot(all_gamma[T], all_dev_conf[T], marker='s', label=f"Conformal, T={T}")
-    plt.plot(all_gamma[T],all_dev_econf[T],marker='^',label=fr"Conformal $E[e^\top e]$, $T={T}$")
     plt.plot(all_gamma[T], all_dev_known[T], '--', marker='^', label=f"Known, T={T}")
 
 
 plt.xlabel(r'$\gamma$')
 plt.ylabel(r'$\mathbb{E}[e^\top \Sigma_e^{-1} e]$')
 plt.title(r'Empirical deviation vs $\gamma$')
-plt.legend(
-    loc='center left',          # choose position
-    bbox_to_anchor=(1.02, 0.5), # move legend outside
-    fontsize=10
-)
+plt.legend()
 plt.grid(True)
 plt.tight_layout()
 plt.savefig('deviation_vs_gamma_allT.jpeg')
+
+plt.figure(figsize=(10,6))
+for T in T_list:
+    plt.plot(all_gamma[T], all_dev_econf[T], marker = '^', label = f'Conformal, T = {T}')
+    plt.plot(all_gamma[T], all_dev_estruct[T], marker='o', label=f"Structure, T={T}")
+    plt.plot(all_gamma[T], all_dev_eknown[T], '--', marker='^', label=f"Known, T={T}")
+
+
+plt.xlabel(r'$\gamma$')
+plt.ylabel(r'$\mathbb{E}[e^\top e]$')
+plt.title(r'Empirical deviation vs $\gamma$')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.savefig('edeviation_vs_gamma_allT.jpeg')
+
 
 T = 8
 
@@ -1122,3 +1236,54 @@ plt.legend()
 plt.savefig('deviation_vs_sigma_T8.jpeg', dpi=300, bbox_inches='tight')
 plt.show()
 
+plt.figure(figsize=(10,6))
+
+nominal = [1-d for d in delta_list]
+T_list = range(1, 25, 8)
+
+for t in T_list:
+
+    cover = [
+        empirical_coverage[t][d][0]
+        for d in delta_list
+    ]
+
+    plt.plot(
+        nominal,
+        cover,
+        marker='o',
+        label=f"T={t}"
+    )
+
+plt.plot([0.75,1],[0.75,1],'k--',label='Ideal')
+
+plt.xlabel("Nominal Coverage")
+
+plt.ylabel("Empirical Coverage")
+
+plt.title("Empirical vs Nominal Coverage")
+
+plt.grid(True)
+
+plt.legend()
+
+plt.savefig("coverage_vs_nominal.jpeg")
+
+plt.figure(figsize=(10,6))
+
+plt.plot(
+    T_list,
+    quant,
+    marker='o',
+    linewidth=2
+)
+
+plt.xlabel("Prediction Horizon T")
+
+plt.ylabel(r"$q_{1-\delta}$")
+
+plt.title(r"Scaling of $q_{1-\delta}$ with Horizon")
+
+plt.grid(True)
+
+plt.savefig("quantile_vs_T.jpeg")
