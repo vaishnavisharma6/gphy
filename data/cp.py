@@ -15,8 +15,7 @@ n,m = 4,4
 x_0 = np.array([1.0, 2.0, 3.0, 4.0])
 xf = np.array([4.0, 5.0, 6.0, 7.0])
 T_list = range(1, 25, 2)
-sigma = 0.1
-sigma_0 = np.eye(n) * sigma
+sigma = 0.3
 delta = 0.3
 Q = np.diag([2.0, 3.0, 4.0, 5.0])
 name = 'stable'
@@ -55,11 +54,11 @@ os.makedirs(delta_folder, exist_ok = True)
 
 def build_system_matrices(t):
     A, B, CT = get_system(name, n, m, t, seed=0)
-
+    
     NT = np.eye(n)
     for i in range(1, t):
         NT = np.hstack((NT, np.linalg.matrix_power(A, i)))
-    sigmaw = np.eye(n*t) * sigma
+    sigmaw = np.eye(n*t) * sigma**2
     sigmaz = NT @ sigmaw @ NT.T
 
     return A, B, CT, NT, sigmaw, sigmaz
@@ -276,7 +275,7 @@ def conformal_quantile(scores, delta):
 def get_scores(U_cal, N_cal, CT_hat, NT, CT, t, sigma):
     scores = []
     for i in range(N_cal):
-        w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma)
+        w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma**2)
         x_true = CT @ U_cal[:, i] + NT@w
         x_cal = CT_hat @ U_cal[:, i]
         scores.append(np.linalg.norm(x_true - x_cal))
@@ -292,7 +291,7 @@ def get_test_scores(U_test, CT_hat, NT, CT, t, sigma):
 
         w = np.random.multivariate_normal(
             np.zeros(n*t),
-            np.eye(n*t) * sigma
+            np.eye(n*t) * sigma**2
         )
 
         x_true = CT @ U_test[:, i] + NT @ w
@@ -348,7 +347,7 @@ for t in T_list:
     for i in range(1, t):
         NT = np.hstack((NT, np.linalg.matrix_power(A, i)))
 
-    sigmaw = np.eye(n*t) * sigma
+    sigmaw = np.eye(n*t) * sigma**2
     sigmaz = NT @ sigmaw @ NT.T
     
     #estimation
@@ -363,7 +362,7 @@ for t in T_list:
     for i in range(N):
         sumx = np.zeros(n)
         for j in range(M):
-            w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma)
+            w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma**2)
             xT = CT @ U[:,i] + NT@ w
             all_xT[:, i, j] = xT
             sumx = sumx + xT
@@ -384,11 +383,6 @@ for t in T_list:
     sample_sigma = sample_sigma / (N*M)
     struct_sigma = struct_sigma/ (N*M)
     
-    #find 1-delta quantile of scores
-    #####################################################
-# Reviewer experiment: empirical coverage
-#####################################################
-
     quantiles[t] = []
     empirical_coverage[t] = {}
 
@@ -523,35 +517,35 @@ for t in T_list:
     s3 = []
 
     for j in range(0, 2000):
-        w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma)
-        x1T = CT @ u1 + NT @ w  
-        x2T =  CT @ u2 + NT @ w  
+        w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma**2)
+        x1T = CT @ u1 + NT@w
+        x2T =  CT_hat @ u2 + NT @ w  
         xkT = CT @ uk + NT @ w  
-        x3T = CT @ u3 + NT @ w
+        x3T = CT_hat @ u3 + NT @ w
         s1.append(x1T)
         s2.append(x2T)
         sk.append(xkT)
         s3.append(x3T)
       
-        x1.append(x1T-xf)
+        x1.append(X_bar @ a1-xf)
         x2.append(x2T-xf)
         xk.append(xkT-xf)
         x3.append(x3T-xf)
 
-    count1 = np.mean(x1, axis = 0) @ np.linalg.pinv(sample_sigma) @ np.mean(x1, axis = 0)  
-    count2 =  np.mean(x2, axis = 0) @ np.linalg.pinv(struct_sigma) @ np.mean(x2, axis = 0)
-    countk = np.mean(xk, axis = 0) @  np.linalg.pinv(sigmaz) @ np.mean(xk, axis = 0) 
-    count3 = np.mean(x3, axis = 0) @ np.mean(x3, axis = 0)
+    count1 = np.mean(x1, axis = 0).T @ np.linalg.inv(sample_sigma) @ np.mean(x1, axis = 0)  
+    count2 =  np.mean(x2, axis = 0).T @ np.linalg.inv(struct_sigma) @ np.mean(x2, axis = 0)
+    countk = np.mean(xk, axis = 0).T @  np.linalg.inv(sigmaz) @ np.mean(xk, axis = 0) 
+    count3 = np.mean(x3, axis = 0).T @ np.mean(x3, axis = 0)
 
     ratios1.append(count1)
     ratios2.append(count2)
     ratiosk.append(countk)
     ratios3.append(count3)
 
-    x1_dev.append(np.mean(x1, axis = 0) @ np.linalg.pinv(sigmaz) @ np.mean(x1, axis = 0) )
-    x2_dev.append(np.mean(x2, axis = 0) @ np.linalg.pinv(sigmaz) @ np.mean(x2, axis = 0) )
-    xk_dev.append(np.mean(xk, axis = 0) @ np.linalg.pinv(sigmaz) @ np.mean(xk, axis = 0) )
-    x3_dev.append(np.mean(x3, axis = 0) @ np.linalg.pinv(sigmaz) @ np.mean(x3, axis = 0) )
+    x1_dev.append(np.mean(x1, axis = 0).T @ np.linalg.pinv(sigmaz) @ np.mean(x1, axis = 0) )
+    x2_dev.append(np.mean(x2, axis = 0).T @ np.linalg.pinv(sigmaz) @ np.mean(x2, axis = 0) )
+    xk_dev.append(np.mean(xk, axis = 0).T @ np.linalg.pinv(sigmaz) @ np.mean(xk, axis = 0) )
+    x3_dev.append(np.mean(x3, axis = 0).T @ np.linalg.pinv(sigmaz) @ np.mean(x3, axis = 0) )
 
     s1 = np.array(s1)
     s2 = np.array(s2)
@@ -585,7 +579,7 @@ for t in T_list:
                         fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('sample based MLE, horizon = {}, ratio = {}'.format(t, count1/2000))
+    plt.title('sample based MLE, horizon = {}, ratio = {}'.format(t, count1))
     plt.savefig(filename1)
 
     filename2 = os.path.join(delta_folder, 'st-{}-{}.jpeg'.format(delta, t))
@@ -599,7 +593,7 @@ for t in T_list:
                         fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('structure based MLE, horizon = {}, ratio = {}'.format(t, count2/2000))
+    plt.title('structure based MLE, horizon = {}, ratio = {}'.format(t, count2))
 
     plt.savefig(filename2)
 
@@ -614,7 +608,7 @@ for t in T_list:
                         fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('known dynamics, horizon = {}, ratio = {}'.format(t, countk/2000))
+    plt.title('known dynamics, horizon = {}, ratio = {}'.format(t, countk))
 
     plt.savefig(filename3)
 
@@ -629,7 +623,7 @@ for t in T_list:
                         fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.title('conformal, horizon = {}, ratio = {}'.format(t, count3/2000))
+    plt.title('conformal, horizon = {}, ratio = {}'.format(t, count3))
 
     plt.savefig(filename4)
 
@@ -658,20 +652,44 @@ plt.grid(True)
 plt.xticks(T_list)
 plt.savefig('norm_{}_{}_{}.jpeg'.format(epsilon, delta, M))
 
+lambda_star = find_lambda_star(n, epsilon, 1-delta)
+lambda_cp = (epsilon - q)**2  
+print(lambda_star)
+print(lambda_cp)
 
 plt.figure(figsize = (10, 6))
-plt.plot(T_list, ratios1, 'o-', label = 'sample based MLE')
-plt.plot(T_list, ratios2, 'o-', label = 'structure MLE')
-plt.plot(T_list, ratiosk, 'o--', color = 'black', label = 'known dynamics')
-plt.plot(T_list, ratios3, 'o-', label = 'conformal')
+plt.yscale('log')
+plt.plot(
+    T_list, ratios1, 'o-',
+    label=r'sample-based MLE, $\hat{\mu}_e^\top \hat{\Sigma}_e^{-1}\hat{\mu}_e$'
+)
+
+plt.plot(
+    T_list, ratios2, 'o-',
+    label=r'structure-aware MLE, $\hat{\mu}_e^\top \hat{\Sigma}_e^{-1}\hat{\mu}_e$'
+)
+
+plt.plot(
+    T_list, ratiosk, 'o--',
+    color='black',
+    label=r'known dynamics, $\mu_e^\top \Sigma_e^{-1}\mu_e$'
+)
+
+plt.plot(
+    T_list, ratios3, 'o-',
+    label=r'conformal, $\hat{\mu}_e^\top \hat{\Sigma}_e^{-1}\hat{\mu}_e$'
+)
 plt.axhline(y=lambda_star,
             color='black',
             linestyle=':',
             linewidth=2,
             label=r'$\lambda^*$')
+plt.axhline(y=lambda_cp,
+            linestyle=':',
+            linewidth=2,
+            label=r'$\lambda_{cp}$')
 plt.xlabel('time horizon')
-plt.ylabel(r'$\mu_e^\top \Sigma_e^{-1}\mu_e$')
-plt.title('data-driven constraint satisfaction')
+# plt.ylabel(r'$\mu_e^\top \Sigma_e^{-1}\mu_e$')
 plt.legend()
 plt.grid(True)
 plt.xticks(T_list)
@@ -725,7 +743,6 @@ axes[0, 0].loglog(M_list, mu_samp_M, '^-', label='sample')
 axes[0, 0].loglog(M_list, mu_struct_M, '^-', label='structure')
 axes[0, 0].set_xlabel('M')
 axes[0, 0].set_ylabel(r'Average $\|\hat{\mu}_X - \mu_X\|_2$')
-axes[0, 0].set_title(f'Mean error vs M (N={N_fixed})')
 axes[0, 0].legend()
 axes[0, 0].grid(True, which="both", alpha=0.3)
 
@@ -733,7 +750,6 @@ axes[0, 1].loglog(M_list, sig_samp_M, '^-', label='sample')
 axes[0, 1].loglog(M_list, sig_struct_M, '^-', label='structure')
 axes[0, 1].set_xlabel('M')
 axes[0, 1].set_ylabel(r'Average $\|\hat{\Sigma}_{x_T} - \Sigma_{x_T}\|_2$')
-axes[0, 1].set_title(f'Covariance error vs M (N={N_fixed})')
 axes[0, 1].legend()
 axes[0, 1].grid(True, which="both", alpha=0.3)
 
@@ -741,7 +757,6 @@ axes[1, 0].loglog(N_list, mu_samp_N, '^-', label='sample')
 axes[1, 0].loglog(N_list, mu_struct_N, '^-', label='structure')
 axes[1, 0].set_xlabel('N')
 axes[1, 0].set_ylabel(r'Average $\|\hat{\mu}_X - \mu_X\|_2$')
-axes[1, 0].set_title(f'Mean error vs N (M={M_fixed})')
 axes[1, 0].legend()
 axes[1, 0].grid(True, which="both", alpha=0.3)
 
@@ -749,7 +764,6 @@ axes[1, 1].loglog(N_list, sig_samp_N, '^-', label='sample')
 axes[1, 1].loglog(N_list, sig_struct_N, '^-', label='structure')
 axes[1, 1].set_xlabel('N')
 axes[1, 1].set_ylabel(r'Average $\|\hat{\Sigma}_{x_T} - \Sigma_{x_T}\|_2$')
-axes[1, 1].set_title(f'Covariance error vs N (M={M_fixed})')
 axes[1, 1].legend()
 axes[1, 1].grid(True, which="both", alpha=0.3)
 
@@ -766,14 +780,12 @@ fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 axes[0].loglog(M_list, CT_err_M, '^-', label=r'$\hat{C}_T$ error')
 axes[0].set_xlabel('M')
 axes[0].set_ylabel(r'Average $\|\hat{C}_T - C_T\|_2$')
-axes[0].set_title('CT error vs M, N = {}'.format(N_fixed))
 axes[0].legend()
 axes[0].grid(True, which="both", alpha=0.3)
 
 axes[1].loglog(N_list, CT_err_N, '^-', label=r'$\hat{C}_T$ error')
 axes[1].set_xlabel('N')
 axes[1].set_ylabel(r'Average $\|\hat{C}_T - C_T\|_2$')
-axes[1].set_title('CT error vs N, M = {}'.format(M_fixed))
 axes[1].legend()
 axes[1].grid(True, which="both", alpha=0.3)
 
@@ -804,7 +816,7 @@ for T in T_list:
 
     b = np.linalg.matrix_power(A, T) @ x_0 - xf
 
-    sigma_w = np.eye(n*T) * sigma
+    sigma_w = np.eye(n*T) * sigma**2
     sigma_z = N_T @ sigma_w @ N_T.T
 
     Q_tilde = block_diag(*([Q] * T))
@@ -821,7 +833,7 @@ for T in T_list:
         for j in range(M):
             w = np.random.multivariate_normal(
                 np.zeros(n*T),
-                np.eye(n*T)*sigma)
+                np.eye(n*T)*sigma**2)
             xT = CT @ U[:,i] + N_T@ w
             all_xT[:, i, j] = xT
             sumx = sumx + xT
@@ -896,6 +908,19 @@ for T in T_list:
 
         prob3 = cp.Problem(objective3, [constraint3])
         prob3.solve(solver=cp.SCS, verbose=False)
+        
+        if u1 is None:
+            print(f"1st Convex solver failed at T={t}")
+            continue
+
+        if u2 is None:
+            print(f"2nd Convex solver failed at T={t}")
+            continue
+
+        if u3 is None:
+            print(f"original Convex solver failed at T={t}")
+            continue
+
 
         Jstar1= float(u1.value.T @ Q_tilde @ u1.value)
         cost_struct.append(Jstar1)
@@ -916,7 +941,7 @@ for T in T_list:
         for _ in range(5000):
             w = np.random.multivariate_normal(
                 np.zeros(n*T),
-                np.eye(n*T)*sigma
+                np.eye(n*T)*sigma**2
             )
 
             xT1 = (
@@ -942,8 +967,8 @@ for T in T_list:
             e3 = xT3 - xf
             
 
-            idev_struct.append(e1.T @ np.linalg.inv(sigma_z) @ e1)
-            idev_conf.append(e2.T @ np.linalg.inv(sigmaz) @ e2)
+            idev_struct.append(e1.T @ np.linalg.inv(struct_sigma) @ e1)
+            idev_conf.append(e2.T @ np.linalg.inv(struct_sigma) @ e2)
             idev_known.append(e3.T @ np.linalg.inv(sigmaz) @ e3)
             idev_econf.append(e2.T @ e2)
             idev_estruct.append(e1.T @ e1)
@@ -994,7 +1019,6 @@ plt.grid(True)
 
 plt.xlabel(r'$\gamma$')
 plt.ylabel(r'$J^*(\gamma)$')
-plt.title(r'Optimal Cost vs $\gamma$')
 plt.legend()
 plt.grid(True)
 plt.savefig('cost_vs_gamma_allT.jpeg')
@@ -1009,8 +1033,7 @@ for T in T_list:
 
 
 plt.xlabel(r'$\gamma$')
-plt.ylabel(r'$\mathbb{E}[e^\top \Sigma_e^{-1} e]$')
-plt.title(r'Empirical deviation vs $\gamma$')
+plt.ylabel(r'$\mu_e^\top \Sigma_e^{-1} \mu_e$')
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
@@ -1024,8 +1047,7 @@ for T in T_list:
 
 
 plt.xlabel(r'$\gamma$')
-plt.ylabel(r'$\mathbb{E}[e^\top e]$')
-plt.title(r'Empirical deviation vs $\gamma$')
+plt.ylabel(r'$\mu_e^\top \mu_e$')
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
@@ -1058,7 +1080,7 @@ N_cal = 60
 U = np.random.randn(m*T, N)
 U_cal = np.random.randn(m*T, N_cal)
 
-sigma_vals = np.linspace(0.1, 2, 20)
+sigma_vals = np.linspace(0.3, 7, 40)
 
 # ---------- initialize ONCE ----------
 cost_struct = []
@@ -1089,7 +1111,7 @@ for sigma in sigma_vals:
     for i in range(N):
         sumx = np.zeros(n)
         for j in range(M):
-            w = np.sqrt(sigma) * w_train[i, j]
+            w = sigma * w_train[i, j]
             xT = CT @ U[:, i] + N_T @ w  
 
             all_xT[:, i, j] = xT
@@ -1154,6 +1176,18 @@ for sigma in sigma_vals:
     cp.Problem(objective2, [constraint2]).solve(solver=cp.SCS)
     cp.Problem(objective3, [constraint3]).solve(solver=cp.SCS)
 
+    if u1 is None:
+        print(f"1st Convex solver failed at T={t}")
+        continue
+
+    if u2 is None:
+        print(f"2nd Convex solver failed at T={t}")
+        continue
+
+    if u3 is None:
+        print(f"original Convex solver failed at T={t}")
+        continue
+
     cost_struct.append(float(u1.value.T @ Q_tilde @ u1.value))
     cost_conf.append(float(u2.value.T @ Q_tilde @ u2.value))
     cost_known.append(float(u3.value.T @ Q_tilde @ u3.value))
@@ -1178,8 +1212,8 @@ for sigma in sigma_vals:
         e2 = xT2 - xf
         e3 = xT3 - xf
 
-        idev_struct.append(e1.T @ np.linalg.inv(sigma_z) @ e1)
-        idev_conf.append(e2.T @ np.linalg.inv(sigma_z) @ e2)
+        idev_struct.append(e1.T @ np.linalg.inv(struct_sigma) @ e1)
+        idev_conf.append(e2.T @ np.linalg.inv(struct_sigma) @ e2)
         idev_econf.append(e2.T @ e2)
         idev_known.append(e3.T @ np.linalg.inv(sigma_z) @ e3)
 
@@ -1191,21 +1225,15 @@ for sigma in sigma_vals:
 
 plt.figure(figsize=(10,6))
 
-plt.plot(sigma_vals, cost_struct,
+plt.plot(sigma_vals, np.abs(np.array(cost_struct)-np.array(cost_known)),
          marker='o', linewidth=2,
          label='Structure')
 
-plt.plot(sigma_vals, cost_conf,
+plt.plot(sigma_vals, np.abs(np.array(cost_conf)-np.array(cost_known)),
          marker='s', linewidth=2,
          label='Conformal')
-
-plt.plot(sigma_vals, cost_known,
-         marker='^', linewidth=2,
-         label='Known')
-
 plt.xlabel(r'$\sigma$')
-plt.ylabel(r'$J^*(\sigma)$')
-plt.title(r'Optimal Cost vs $\sigma$ ($T=8$)')
+plt.ylabel(r'$J^*(\sigma)-\hat{J^*}(\sigma})$')
 plt.grid(True)
 plt.legend()
 plt.savefig('cost_vs_sigma_T8.jpeg', dpi=300, bbox_inches='tight')
@@ -1213,24 +1241,16 @@ plt.show()
 
 plt.figure(figsize=(10,6))
 
-plt.plot(sigma_vals, dev_struct,
+plt.plot(sigma_vals, np.abs(np.array(dev_struct)-np.array(dev_known)),
          marker='o', linewidth=2,
          label='Structure')
 
-plt.plot(sigma_vals, dev_conf,
+plt.plot(sigma_vals, np.abs(np.array(dev_conf)-np.array(dev_known)),
          marker='s', linewidth=2,
          label='Conformal')
 
-plt.plot(sigma_vals, dev_econf, '^--', linewidth = 2, label = r'Conformal $E[e^\top e]$')
-
-plt.plot(sigma_vals, dev_known,
-         marker='^', linewidth=2,
-         linestyle='--',
-         label='Known')
-
 plt.xlabel(r'$\sigma$')
-plt.ylabel(r'$\mathbb{E}[e^\top\Sigma_e^{-1}e]$')
-plt.title(r'Empirical Deviation vs $\sigma$ ($T=8$)')
+plt.ylabel(r'$\mu_e^\top\Sigma_e^{-1}\mu_e$-$\hat{\mu}_e^\top\hat{\Sigma}_e^{-1}\hat{\mu}_e$')
 plt.grid(True)
 plt.legend()
 plt.savefig('deviation_vs_sigma_T8.jpeg', dpi=300, bbox_inches='tight')
@@ -1239,9 +1259,10 @@ plt.show()
 plt.figure(figsize=(10,6))
 
 nominal = [1-d for d in delta_list]
-T_list = range(1, 25, 8)
+T_list = range(1, 25, 2)
+T_list_cov = range(1, 25, 8)
 
-for t in T_list:
+for t in T_list_cov:
 
     cover = [
         empirical_coverage[t][d][0]
@@ -1261,8 +1282,6 @@ plt.xlabel("Nominal Coverage")
 
 plt.ylabel("Empirical Coverage")
 
-plt.title("Empirical vs Nominal Coverage")
-
 plt.grid(True)
 
 plt.legend()
@@ -1278,11 +1297,9 @@ plt.plot(
     linewidth=2
 )
 
-plt.xlabel("Prediction Horizon T")
+plt.xlabel("T")
 
 plt.ylabel(r"$q_{1-\delta}$")
-
-plt.title(r"Scaling of $q_{1-\delta}$ with Horizon")
 
 plt.grid(True)
 
