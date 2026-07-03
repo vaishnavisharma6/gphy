@@ -15,8 +15,7 @@ n,m = 4,4
 x_0 = np.array([1.0, 2.0, 3.0, 4.0])
 xf = np.array([4.0, 5.0, 6.0, 7.0])
 T_list = range(1, 17, 2)
-sigma = 0.1
-sigma_0 = np.eye(n) * sigma
+sigma = 0.3
 delta = 0.3
 Q = np.diag([2.0, 3.0, 4.0, 5.0])
 name = 'unstable'
@@ -54,7 +53,7 @@ def build_system_matrices(t):
     NT = np.eye(n)
     for i in range(1, t):
         NT = np.hstack((NT, np.linalg.matrix_power(A, i)))
-    sigmaw = np.eye(n*t) * sigma
+    sigmaw = np.eye(n*t) * sigma**2
     sigmaz = NT @ sigmaw @ NT.T
 
     return A, B, CT, NT, sigmaw, sigmaz
@@ -271,7 +270,7 @@ def conformal_quantile(scores, delta):
 def get_scores(U_cal, N_cal, CT_hat, NT, CT, t, sigma):
     scores = []
     for i in range(N_cal):
-        w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma)
+        w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma**2)
         x_true = CT @ U_cal[:, i] + NT@w
         x_cal = CT_hat @ U_cal[:, i]
         scores.append(np.linalg.norm(x_true - x_cal))
@@ -322,7 +321,7 @@ for t in T_list:
     for i in range(1, t):
         NT = np.hstack((NT, np.linalg.matrix_power(A, i)))
 
-    sigmaw = np.eye(n*t) * sigma
+    sigmaw = np.eye(n*t) * sigma**2
     sigmaz = NT @ sigmaw @ NT.T
     
     #estimation
@@ -337,7 +336,7 @@ for t in T_list:
     for i in range(N):
         sumx = np.zeros(n)
         for j in range(M):
-            w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma)
+            w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma**2)
             xT = CT @ U[:,i] + NT@ w
             all_xT[:, i, j] = xT
             sumx = sumx + xT
@@ -432,7 +431,7 @@ for t in T_list:
     s3 = []
 
     for j in range(0, 2000):
-        w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma)
+        w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma**2)
         x1T = CT @ u1 + NT @ w  
         x2T =  CT @ u2 + NT @ w  
         xkT = CT @ uk + NT @ w  
@@ -713,7 +712,7 @@ for T in T_list:
 
     b = np.linalg.matrix_power(A, T) @ x_0 - xf
 
-    sigma_w = np.eye(n*T) * sigma
+    sigma_w = np.eye(n*T) * sigma**2
     sigma_z = N_T @ sigma_w @ N_T.T
 
     Q_tilde = block_diag(*([Q] * T))
@@ -730,7 +729,7 @@ for T in T_list:
         for j in range(M):
             w = np.random.multivariate_normal(
                 np.zeros(n*T),
-                np.eye(n*T)*sigma)
+                np.eye(n*T)*sigma**2)
             xT = CT @ U[:,i] + N_T@ w
             all_xT[:, i, j] = xT
             sumx = sumx + xT
@@ -825,7 +824,7 @@ for T in T_list:
         for _ in range(5000):
             w = np.random.multivariate_normal(
                 np.zeros(n*T),
-                np.eye(n*T)*sigma
+                np.eye(n*T)*sigma**2
             )
 
             xT1 = (
@@ -967,7 +966,7 @@ N_cal = 60
 U = np.random.randn(m*T, N)
 U_cal = np.random.randn(m*T, N_cal)
 
-sigma_vals = np.linspace(0.1, 2, 20)
+sigma_vals = np.linspace(0.3, 7, 40)
 
 # ---------- initialize ONCE ----------
 cost_struct = []
@@ -998,7 +997,7 @@ for sigma in sigma_vals:
     for i in range(N):
         sumx = np.zeros(n)
         for j in range(M):
-            w = np.sqrt(sigma) * w_train[i, j]
+            w = sigma * w_train[i, j]
             xT = CT @ U[:, i] + N_T @ w  
 
             all_xT[:, i, j] = xT
@@ -1087,8 +1086,8 @@ for sigma in sigma_vals:
         e2 = xT2 - xf
         e3 = xT3 - xf
 
-        idev_struct.append(e1.T @ np.linalg.inv(sigma_z) @ e1)
-        idev_conf.append(e2.T @ np.linalg.inv(sigma_z) @ e2)
+        idev_struct.append(e1.T @ np.linalg.inv(struct_sigma) @ e1)
+        idev_conf.append(e2.T @ np.linalg.inv(struct_sigma) @ e2)
         idev_econf.append(e2.T @ e2)
         idev_known.append(e3.T @ np.linalg.inv(sigma_z) @ e3)
 
