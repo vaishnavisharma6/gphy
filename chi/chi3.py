@@ -27,7 +27,7 @@ x_f = np.array([4.0, 5.0, 6.0, 7.0])
 T_list = range(1, 25, 2)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
-delta = 0.3
+delta = 0.5
 Q = np.diag([2.0, 3.0, 4.0, 5.0])
 q = norm.ppf(1 - delta)
 u_norm_diff_list = []
@@ -81,6 +81,8 @@ l5 = []
 ratios1 = []
 ratios3 = []
 ratios5 = []
+
+bT = []
 
 
 #numerically find lambda*
@@ -170,13 +172,8 @@ def solve_lambda(C_T, Qp, V, b, gamma, tol=1e-10, max_iter=1000):
     return mid
 
 
-
-
 for t in T_list:
     A,B, NT = get_system(name, n, m, t, seed=0)
-    if t == 1:
-        print(A)
-        print(B)
     # Construct N_T and C_T
     N_T = np.eye(n)
     C_T = NT
@@ -232,7 +229,11 @@ for t in T_list:
     if u_c5 is None:
         print(f'Convex solver failed at T={t}')    
       
+    if t ==19 or t == 21:  
+        print('t,:', t)
+        print('u:', u_convex)
 
+    bT.append(b.T @ np.linalg.inv(sigma_z) @ b)    
     # --- Simulate both systems ---
     np.random.seed(0)
     x1 = []
@@ -250,10 +251,10 @@ for t in T_list:
         x3T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c3 + N_T @ w  # epsilon 
         x5T = np.linalg.matrix_power(A, t) @ x_0 + C_T @ u_c5 + N_T @ w #non-central
         
-        x1.append((x1T-x_f) @ np.linalg.inv(sigma_z) @ (x1T-x_f))
+        x1.append((x1T-x_f).T @ np.linalg.inv(sigma_z) @ (x1T-x_f))
         x3.append((x3T-x_f))
         
-        x5.append((x5T - x_f) @ np.linalg.inv(sigma_z) @ (x5T - x_f))
+        x5.append((x5T - x_f).T @ np.linalg.inv(sigma_z) @ (x5T - x_f))
         count5 = sum(d <= epsilon**2 for d in x5)
         
         s1.append(x1T)
@@ -261,9 +262,9 @@ for t in T_list:
         s5.append(x5T)
 
     
-    tdev1.append((C_T @ u_convex + b)@ np.linalg.inv(sigma_z) @ (C_T @ u_convex + b)+n)
-    tdev3.append((C_T @ u_c3 + b)@ np.linalg.inv(sigma_z) @ (C_T @ u_c3 + b)+n )
-    tdev5.append((C_T @ u_c5 + b)@ np.linalg.inv(sigma_z) @ (C_T @ u_c5 + b)+n)
+    tdev1.append((C_T @ u_convex + b).T @ np.linalg.inv(sigma_z) @ (C_T @ u_convex + b)+n)
+    tdev3.append((C_T @ u_c3 + b).T @ np.linalg.inv(sigma_z) @ (C_T @ u_c3 + b)+n )
+    tdev5.append((C_T @ u_c5 + b).T @ np.linalg.inv(sigma_z) @ (C_T @ u_c5 + b)+n)
 
 
     count1 = np.mean(x1, axis = 0)  
@@ -361,7 +362,6 @@ plt.axhline(y=epsilon**2,
 
 plt.xlabel('time horizon')
 plt.ylabel('')
-plt.title('Empirical constraint staisfaction')
 plt.legend()
 plt.grid(True)
 plt.xticks(T_list)
@@ -380,7 +380,6 @@ plt.plot(T_list, tdev5, '^--', label = 'non-central chi theoretical')
 # plt.plot(T_list, x6_dev, 'o-', label = 'marc' )
 plt.xlabel('time horizon')
 plt.ylabel('state dev')
-plt.title('avg state deviation')
 plt.legend()
 plt.grid(True)
 plt.xticks(T_list)
@@ -399,6 +398,16 @@ plt.legend()
 plt.grid(True)
 plt.xticks(T_list)
 plt.savefig('norm-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
+plt.close()
+
+plt.figure(figsize=(10, 6))
+plt.plot(T_list, bT)  # your curve
+plt.axhline(y=lambda_star, color='r', linestyle='--', label=r'$\gamma$')
+
+plt.xlabel('T')
+plt.ylabel(r'$b^\top \Sigma_e^{-1}b$')
+plt.legend()
+plt.savefig('bT.jpeg')
 plt.close()
 
 
@@ -517,7 +526,6 @@ for T in T_list:
 
 plt.xlabel(r'$\gamma$')
 plt.ylabel(r'$J^*(\gamma)$')
-plt.title(r'Optimal Cost vs $\gamma$')
 plt.legend()
 plt.grid(True)
 plt.savefig('cost_vs_gamma_allT.jpeg')
@@ -538,7 +546,6 @@ for T in T_list:
 
 plt.xlabel(r'$\gamma$')
 plt.ylabel(r'$\mathbb{E}[e^\top \Sigma_e^{-1} e]$')
-plt.title(r'Empirical deviation vs $\gamma$')
 plt.legend()
 plt.grid(True)
 plt.savefig('deviation_vs_gamma_allT.jpeg')
