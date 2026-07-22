@@ -2,22 +2,34 @@ from scipy.stats import ncx2
 import numpy as np
 import matplotlib.pyplot as plt
 
-epsilon = 2.4
+epsilon_1 = 0.7
+epsilon_2 = 1.4
+epsilon_3 = 2.1
+
 n_list = np.arange(2, 41)
 
-lambda_val = 5.0      # example value
+lambda_val = 5     # example value
 
-delta_min = []
+delta_min1 = []
+delta_min2 = []
+delta_min3 = []
 
 for n in n_list:
-    delta = 1 - ncx2.cdf(epsilon**2,
+    delta1 = 1 - ncx2.cdf(epsilon_1**2,
                          df=n,
                          nc=lambda_val)
-    delta_min.append(delta)
+    delta2 = 1 - ncx2.cdf(epsilon_2**2, df=n, nc=lambda_val)
+    delta3 = 1 - ncx2.cdf(epsilon_3**2, df=n, nc=lambda_val)
+    delta_min1.append(delta1)
+    delta_min2.append(delta2)
+    delta_min3.append(delta3)
 
 plt.figure(figsize=(7,5))
-plt.plot(n_list, delta_min, 'o-', linewidth=2)
+plt.plot(n_list, delta_min1, 'o-', linewidth=2, label ='epsilon = {}'.format(epsilon_1))
+plt.plot(n_list, delta_min2, 'o-', linewidth =2, label ='epsilon = {}'.format(epsilon_2))
+plt.plot(n_list, delta_min3, 'o-', linewidth =2, label ='epsilon = {}'.format(epsilon_3))
 plt.xlabel(r"$n$")
 plt.ylabel(r"Minimum feasible $\delta$")
 plt.grid(True)
+plt.legend()
 plt.savefig('delta_n_chi.jpeg')

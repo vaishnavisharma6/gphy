@@ -22,9 +22,9 @@ import GPy
 # fixed system parameters
 
 n, m = 4, 4
-x_0 = np.array([1.0, 2.0, 3.0, 4.0])
+x_0 = np.array([0.0, 0.0, 0.0, 0.0])
 x_f = np.array([4.0, 5.0, 6.0, 7.0])
-T_list = range(1, 25, 2)  
+T_list = range(1, 20, 2)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
 delta = 0.5
@@ -32,7 +32,7 @@ Q = np.diag([2.0, 3.0, 4.0, 5.0])
 q = norm.ppf(1 - delta)
 u_norm_diff_list = []
 state_dev_diff_list = []
-name = 'stable'
+name = 'unstable'
 norm_folder = 'norms_{}'.format(name)
 state_folder = 'states_{}'.format(name)
 diff_folder = 'diffs_{}'.format(name)
@@ -62,21 +62,6 @@ x5_dev = []
 tdev1 = []
 tdev3 = []
 tdev5 = []
-
-g1 = []
-g2 = []
-g3 = []
-g4 = []
-g5 = []
-
-
-all_lam = []
-
-l1 = []
-l2 = []
-l3 = []
-l4 = []
-l5 = []
 
 ratios1 = []
 ratios3 = []
@@ -229,9 +214,12 @@ for t in T_list:
     if u_c5 is None:
         print(f'Convex solver failed at T={t}')    
       
-    if t ==19 or t == 21:  
-        print('t,:', t)
-        print('u:', u_convex)
+    if t==50:
+        u_t = u_convex
+
+    if t == 51:
+        u_T = u_convex    
+    
 
     bT.append(b.T @ np.linalg.inv(sigma_z) @ b)    
     # --- Simulate both systems ---
@@ -296,59 +284,8 @@ for t in T_list:
     exact.append(exact_norm)
 
 
-    center = (x_f[0], x_f[1])
 
-    theta = np.linspace(0, 2*np.pi, 400)
-    x = center[0] + epsilon * np.cos(theta)
-    y = center[1] + epsilon * np.sin(theta)
-
-
-    filename1 = os.path.join(delta_folder, '2nd-{}-{}.jpeg'.format(delta, t))
-    plt.figure(figsize = (10,6))
-    plt.scatter(s1[:, 0], s1[:, 1], marker = 'x')
-    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    plt.plot(x, y)
-    plt.scatter(*center)
-    plt.gca().set_aspect('equal', adjustable='box')
-    circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
-                        fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
-    plt.xlabel('x1')
-    plt.ylabel('x2')
-    plt.title('second order moment, horizon = {}, ratio = {}'.format(t, count1/5000))
-
-    plt.savefig(filename1)
-
-
-    filename3 = os.path.join(delta_folder, 'eps-{}-{}-{}.jpeg'.format(delta, epsilon, t))
-    plt.figure(figsize = (10,6))
-    plt.scatter(s3[:, 0], s3[:, 1], marker = 'x')
-    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    plt.gca().set_aspect('equal', adjustable='box')
-    circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
-                        fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
-    plt.gca().add_patch(circle)
-    plt.xlabel('x1')
-    plt.ylabel('x2')
-    plt.title('mahalanobis, horizon = {}, ratio = {}'.format(t, count3/5000))
-    plt.legend()
-    plt.savefig(filename3)
-
-    filename5 = os.path.join(delta_folder, 'exact-{}-{}-{}.jpeg'.format(delta, epsilon, t))
-    plt.figure(figsize = (10,6))
-    plt.scatter(s5[:, 0], s5[:, 1], marker = 'x')
-    plt.scatter(x_f[0], x_f[1], marker = 'x', color = 'red')
-    plt.gca().set_aspect('equal', adjustable='box')
-    circle = patches.Circle((x_f[0], x_f[1]), epsilon, 
-                        fill=False, linestyle='--', color='k', label=f'ε-ball (ε={epsilon})')
-    plt.gca().add_patch(circle)
-    plt.xlabel('x1')
-    plt.ylabel('x2')
-    plt.title('non-central chi, horizon = {}, ratio = {}'.format(t, count5/5000))
-    plt.legend()
-    plt.savefig(filename5)
-
-plt.close()
-
+# print(diff)
 N = np.arange(0, len(ratios1))
 plt.figure(figsize = (10, 6))
 plt.plot(T_list, ratios3, '^-',label = r'$\mu_e^\top \Sigma_e^{-1}\mu_e$')
