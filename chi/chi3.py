@@ -1,3 +1,4 @@
+#results for stable case
 import numpy as np
 import cvxpy as cp
 from scipy.optimize import minimize
@@ -22,38 +23,22 @@ import GPy
 # fixed system parameters
 
 n, m = 4, 4
-x_0 = np.array([0.0, 0.0, 0.0, 0.0])
+sigma_0 = np.eye(n) * 0.2
+x_0 =  np.random.multivariate_normal(np.zeros(n), sigma_0)
 x_f = np.array([4.0, 5.0, 6.0, 7.0])
-T_list = range(1, 20, 2)  
-sigma_0 = np.eye(n) * 0.1
-sigma_w_base = np.eye(n) * 0.1
+T_list = range(1, 30, 2)  
+sigma = np.eye(n) * 0.1
 delta = 0.5
 Q = np.diag([2.0, 3.0, 4.0, 5.0])
 q = norm.ppf(1 - delta)
-u_norm_diff_list = []
-state_dev_diff_list = []
-name = 'unstable'
-norm_folder = 'norms_{}'.format(name)
-state_folder = 'states_{}'.format(name)
-diff_folder = 'diffs_{}'.format(name)
+name = 'stable'
 delta_folder = 'traj_{}'.format(delta)
-exact_folder = 'traj_{}'.format(delta)
 epsilon = 2.4
-os.makedirs(norm_folder, exist_ok=True)
-os.makedirs(state_folder, exist_ok=True)
-os.makedirs(diff_folder, exist_ok=True)
 os.makedirs(delta_folder, exist_ok = True)
-
-
-secd = []
-epd = []
-firstd = []
-modeld = []
 
 secu = []
 epu = []
 exact = []
-alleps = []
 
 x1_dev = []
 x3_dev = []
@@ -68,7 +53,6 @@ ratios3 = []
 ratios5 = []
 
 bT = []
-
 
 #numerically find lambda*
 def find_lambda_star(n, epsilon, delta):
@@ -166,7 +150,7 @@ for t in T_list:
         N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
 
     sigma_w = np.eye(n*t) * 0.1
-    sigma_z =  N_T @ sigma_w @ N_T.T
+    sigma_z =  N_T @ sigma_w @ N_T.T + np.linalg.matrix_power(A, t) @ sigma_0 @ np.linalg.matrix_power(A, t).T
     traceSigma = np.trace(sigma_z)
 
     tau = 2 * np.trace(sigma_z @ sigma_z)

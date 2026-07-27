@@ -20,9 +20,9 @@ from scipy.linalg import fractional_matrix_power
 
 #system parameters
 n, m = 4, 4
-x_0 = np.array([0.0, 0.0, 0.0, 0.0])
+x_0 = np.random.multivariate_normal(np.zeros(n), np.eye(n)*0.2)
 x_f = np.array([4.0, 5.0, 6.0, 7.0])
-T_list = range(21, 140, 10)  
+T_list = range(1, 100, 10)  
 sigma_0 = np.eye(n) * 0.1
 sigma_w_base = np.eye(n) * 0.1
 delta = 0.5
@@ -74,7 +74,7 @@ ratios5 = []
 bT = []
 
 #numerically find lambda*
-def find_lambda_star(n, epsilon, delta, lambda_max):
+def find_lambda_star(n, epsilon, delta):
     """
     Solves F_{chi^2_n(lambda)}(epsilon^2) = delta
     for lambda >= 0.
@@ -190,16 +190,16 @@ for t in T_list:
         N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
 
     sigma_w = np.eye(n*t) * 0.1
-    sigma_z =  N_T @ sigma_w @ N_T.T
+    sigma_z =  N_T @ sigma_w @ N_T.T + np.linalg.matrix_power(A, t)@ sigma_0 @ np.linalg.matrix_power(A, t).T
     traceSigma = np.trace(sigma_z)
     lambda_max = np.linalg.eigvalsh(sigma_z).max()
     tau = 2 * np.trace(sigma_z @ sigma_z)
-    b = (np.linalg.matrix_power(A, t) @ x_0) - x_f
+    b = - 1* x_f
     vals = np.linalg.eigvals(sigma_z)
     eig = np.max(vals)
     gamma = epsilon**2 - n #second order
     dev = epsilon**2  #epsilon sd
-    lambda_star = find_lambda_star(n, epsilon, 1-delta, lambda_max) #non-central
+    lambda_star = find_lambda_star(n, epsilon, 1-delta) #non-central
     marc = (epsilon - np.sqrt(-2 * math.log(1-delta)))**2
     Q_tilde = block_diag(*([Q] * t))
     nu1 = solve_nu(C_T, Q_tilde, sigma_z, b, lambda_star)
@@ -299,7 +299,7 @@ plt.ylabel('')
 plt.legend()
 plt.grid(True)
 plt.xticks(T_list)
-plt.savefig('ratio.jpeg')
+plt.savefig(f'ratio_{name}.jpeg')
 plt.close()
 
 
@@ -317,7 +317,7 @@ plt.ylabel('state dev')
 plt.legend()
 plt.grid(True)
 plt.xticks(T_list)
-plt.savefig('dev-T-{}-{}_ss{}.jpeg'.format(epsilon, delta, j))
+plt.savefig('dev-T--{}-{}-{}_ss{}.jpeg'.format(name, epsilon, delta, j))
 plt.close()
 
 plt.figure(figsize = (8,6))
@@ -363,157 +363,157 @@ plt.close()
 # Cost vs gamma for fixed horizon T = 6
 # --------------------------------------------------
 
-# T_list = [4, 6, 8]
-# lambda_star = find_lambda_star(n, epsilon, 1-delta)
+T_list = [4, 6, 8]
+lambda_star = find_lambda_star(n, epsilon, 1-delta)
 
-# all_gamma = {}
-# all_cost = {}
-# all_lambda = {}
-# all_dev = {}
-# all_cost1 = {}
-# all_dev1 = {}
+all_gamma = {}
+all_cost = {}
+all_lambda = {}
+all_dev = {}
+all_cost1 = {}
+all_dev1 = {}
 
-# for T in T_list:
+for T in T_list:
 
-#     A, B, NT = get_system(name, n, m, T, seed=0)
+    A, B, NT = get_system(name, n, m, T, seed=0)
 
-#     N_T = np.eye(n)
-#     C_T = NT
-#     for i in range(1, T):
-#         N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
+    N_T = np.eye(n)
+    C_T = NT
+    for i in range(1, T):
+        N_T = np.hstack((N_T, np.linalg.matrix_power(A, i)))
 
-#     b = np.linalg.matrix_power(A, T) @ x_0 - x_f
+    b = np.linalg.matrix_power(A, T) @ x_0 - x_f
 
-#     sigma_w = np.eye(n*T) * 0.1
-#     sigma_z = N_T @ sigma_w @ N_T.T
+    sigma_w = np.eye(n*T) * 0.1
+    sigma_z = N_T @ sigma_w @ N_T.T
 
-#     Q_tilde = block_diag(*([Q] * T))
+    Q_tilde = block_diag(*([Q] * T))
 
-#     gamma_min = 0.0
-#     gamma_max = float(b.T @ np.linalg.inv(sigma_z) @ b)
+    gamma_min = 0.0
+    gamma_max = float(b.T @ np.linalg.inv(sigma_z) @ b)
 
-#     gamma_vals = np.linspace(gamma_min, gamma_max, 10)
+    gamma_vals = np.linspace(gamma_min, gamma_max, 10)
 
-#     cost_vals = []
-#     lambda_vals = []
-#     dev_vals = []
-#     cost1_vals = []
-#     dev1_vals = []
+    cost_vals = []
+    lambda_vals = []
+    dev_vals = []
+    cost1_vals = []
+    dev1_vals = []
 
-#     for gamma in gamma_vals:
+    for gamma in gamma_vals:
 
-#         u = cp.Variable(m*T)
-#         u1 = cp.Variable(m*T)
+        u = cp.Variable(m*T)
+        u1 = cp.Variable(m*T)
 
-#         objective = cp.Minimize(cp.quad_form(u, Q_tilde))
-#         objective1 = cp.Minimize(cp.quad_form(u, Q_tilde))
+        objective = cp.Minimize(cp.quad_form(u, Q_tilde))
+        objective1 = cp.Minimize(cp.quad_form(u1, Q_tilde))
 
-#         constraint = (
-#             cp.quad_form(
-#                 C_T @ u + b,
-#                 np.linalg.inv(sigma_z)
-#             ) <= gamma
-#         )
-#         constraint1 = (
-#             cp.quad_form(C_T@u1 + b,
-#                          np.identity(n)
-#             ) <= gamma
-#         )
+        constraint = (
+            cp.quad_form(
+                C_T @ u + b,
+                np.linalg.inv(sigma_z)
+            ) <= gamma
+        )
+        constraint1 = (
+            cp.quad_form(C_T@u1 + b,
+                         np.identity(n)
+            ) <= gamma
+        )
 
-#         prob = cp.Problem(objective, [constraint])
-#         prob1 = cp.Problem(objective1, [constraint1])
-#         prob.solve(solver=cp.SCS, verbose=False)
-#         prob1.solve(solver=cp.SCS, verbose= False)
+        prob = cp.Problem(objective, [constraint])
+        prob1 = cp.Problem(objective1, [constraint1])
+        prob.solve(solver=cp.SCS, verbose=False)
+        prob1.solve(solver=cp.SCS, verbose= False)
 
-#         if u.value is None:
-#             cost_vals.append(np.nan)
-#             lambda_vals.append(np.nan)
-#             dev_vals.append(np.nan)
-#             continue
+        if u.value is None:
+            cost_vals.append(np.nan)
+            lambda_vals.append(np.nan)
+            dev_vals.append(np.nan)
+            continue
 
-#         if u1.value is None:
-#             cost1_vals.append(np.nan)
-#             dev1_vals.append(np.nan)
-#             continue
+        if u1.value is None:
+            cost1_vals.append(np.nan)
+            dev1_vals.append(np.nan)
+            continue
 
-#         Jstar = float(u.value.T @ Q_tilde @ u.value)
-#         J1star = float(u1.value.T @ Q_tilde @ u1.value)
-#         cost_vals.append(Jstar)
-#         cost1_vals.append(J1star)
+        Jstar = float(u.value.T @ Q_tilde @ u.value)
+        J1star = float(u1.value.T @ Q_tilde @ u1.value)
+        cost_vals.append(Jstar)
+        cost1_vals.append(J1star)
 
-#         # try:
-#         #     lam = solve_nu(
-#         #         C_T,
-#         #         Q_tilde,
-#         #         sigma_z,
-#         #         b,
-#         #         gamma
-#         #     )
-#         # except:
-#         #     lam = np.nan
+        # try:
+        #     lam = solve_nu(
+        #         C_T,
+        #         Q_tilde,
+        #         sigma_z,
+        #         b,
+        #         gamma
+        #     )
+        # except:
+        #     lam = np.nan
 
-#         # lambda_vals.append(lam)
+        # lambda_vals.append(lam)
 
-#         idev = []
-#         idev1 = []
-#         for _ in range(5000):
-#             w = np.random.multivariate_normal(
-#                 np.zeros(n*T),
-#                 np.eye(n*T)*0.1
-#             )
+        idev = []
+        idev1 = []
+        for _ in range(5000):
+            w = np.random.multivariate_normal(
+                np.zeros(n*T),
+                np.eye(n*T)*0.1
+            )
 
-#             xT = (
-#                 np.linalg.matrix_power(A, T) @ x_0
-#                 + C_T @ u.value
-#                 + N_T @ w
-#             )
-#             xT1 = (np.linalg.matrix_power(A, T) @ x_0
-#                 + C_T @ u1.value
-#                 + N_T @ w)
+            xT = (
+                np.linalg.matrix_power(A, T) @ x_0
+                + C_T @ u.value
+                + N_T @ w
+            )
+            xT1 = (np.linalg.matrix_power(A, T) @ x_0
+                + C_T @ u1.value
+                + N_T @ w)
             
-#             e = xT - x_f
-#             e1 = xT1 - x_f
+            e = xT - x_f
+            e1 = xT1 - x_f
 
-#             idev.append(
-#                 e.T @ e
-#             )
-#             idev1.append(e1.T @ e1)
+            idev.append(
+                e.T @ e
+            )
+            idev1.append(e1.T @ e1)
 
-#         dev_vals.append(np.mean(idev))
-#         dev1_vals.append(np.mean(idev1))
+        dev_vals.append(np.mean(idev))
+        dev1_vals.append(np.mean(idev1))
 
-#     all_gamma[T] = gamma_vals
-#     all_cost[T] = cost_vals
-#     all_cost1[T] = cost1_vals
-#     all_lambda[T] = lambda_vals
-#     all_dev[T] = dev_vals
-#     all_dev1[T] = dev1_vals
+    all_gamma[T] = gamma_vals
+    all_cost[T] = cost_vals
+    all_cost1[T] = cost1_vals
+    all_lambda[T] = lambda_vals
+    all_dev[T] = dev_vals
+    all_dev1[T] = dev1_vals
 
-# plt.figure(figsize=(10,6))
+plt.figure(figsize=(10,6))
 
-# for T in T_list:
-#     plt.plot(all_gamma[T],all_cost[T],marker='^',linewidth=2,label=f"T={T}")
-#     plt.plot(all_gamma[T], all_cost1[T], marker = 'o', linewidth = 2, label = f"unweighted T = {T}")
+for T in T_list:
+    plt.plot(all_gamma[T],all_cost[T],marker='^',linewidth=2,label=f"T={T}")
+    plt.plot(all_gamma[T], all_cost1[T], marker = 'o', linewidth = 2, label = f"unweighted T = {T}")
 
-# plt.xlabel(r'$\gamma$')
-# plt.ylabel(r'$J^*(\gamma)$')
-# plt.legend()
-# plt.grid(True)
-# plt.savefig('cost_vs_gamma_allT.jpeg')
-# plt.show()
+plt.xlabel(r'$\gamma$')
+plt.ylabel(r'$J^*(\gamma)$')
+plt.legend()
+plt.grid(True)
+plt.savefig(f'cost_vs_gamma_allT_{name}.jpeg')
+plt.show()
 
-# plt.figure(figsize=(10,6))
-
-
-# for T in T_list:
-#     plt.plot(all_gamma[T],all_dev[T],marker='^',linewidth=2,label=f"T={T}")
-#     plt.plot(all_gamma[T], all_dev1[T], marker = 'o', linewidth=2, label =f"unweighted T = {T}")
+plt.figure(figsize=(10,6))
 
 
-# plt.xlabel(r'$\gamma$')
-# plt.ylabel(r'$E[e^\top e]$')
-# plt.legend()
-# plt.grid(True)
-# plt.savefig('deviation_vs_gamma_allT.jpeg')
-# plt.show()
+for T in T_list:
+    plt.plot(all_gamma[T],all_dev[T],marker='^',linewidth=2,label=f"T={T}")
+    plt.plot(all_gamma[T], all_dev1[T], marker = 'o', linewidth=2, label =f"unweighted T = {T}")
+
+
+plt.xlabel(r'$\gamma$')
+plt.ylabel(r'$E[e^\top e]$')
+plt.legend()
+plt.grid(True)
+plt.savefig(f"deviation_vs_gamma_allT_{name}.jpeg")
+plt.show()
 
