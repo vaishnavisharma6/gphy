@@ -830,6 +830,7 @@ for T in T_list:
         cost_struct_runs = []
         cost_conf_runs = []
         cost_known_runs = []
+        cost_abs_runs = []
 
         dev_struct_runs = []
         dev_conf_runs = []
@@ -837,6 +838,7 @@ for T in T_list:
         dev_econf_runs = []
         dev_estruct_runs = []
         dev_eknown_runs = []
+        dev_abs_runs = []
 
         for dataset in range(k_est):
 
@@ -893,6 +895,7 @@ for T in T_list:
             u1 = cp.Variable(m*T)
             u2 = cp.Variable(m*T)
             u3 = cp.Variable(m*T)
+            u4 = cp.Variable(m*T)
 
             prob1 = cp.Problem(
                 cp.Minimize(cp.quad_form(u1, Q_tilde)),
@@ -912,13 +915,21 @@ for T in T_list:
                               np.linalg.inv(sigma_z)) <= gamma]
             )
 
+            prob4 = cp.Problem(
+                cp.Minimize(cp.quad_form(u4, Q_tilde)),
+                [cp.quad_form(CT @ u4 - xf,
+                              np.eye(n)) <= gamma]
+            )
+
             prob1.solve(solver=cp.SCS, verbose=False)
             prob2.solve(solver=cp.SCS, verbose=False)
             prob3.solve(solver=cp.SCS, verbose=False)
+            prob4.solve(solver =cp.SCS, verbose = False)
 
             if (u1.value is None or
                 u2.value is None or
-                u3.value is None):
+                u3.value is None or
+                u4.value is None):
                 continue
 
             # ======================================================
