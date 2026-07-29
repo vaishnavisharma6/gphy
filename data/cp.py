@@ -13,17 +13,17 @@ import matplotlib.patches as patches
 
 n,m = 4,4
 xf = np.array([4.0, 5.0, 6.0, 7.0])
-T_list = range(1, 25, 2)
+T_list = range(1, 20, 2)
 sigma_1 = 0.2
 sigma_2 = 0.3
 sigma_0 = np.eye(n) * sigma_1**2
 x_0 =  np.random.multivariate_normal(np.zeros(n), sigma_0)
-delta = 0.3
+delta = 0.5
 Q = np.diag([2.0, 3.0, 4.0, 5.0])
 name = 'stable'
 epsilon = 2.4
 M = 100
-k_est = 10
+k_est = 1
 
 #to store optimal costs
 sampleu = []
@@ -82,7 +82,7 @@ def generate_nested_data(t, N_max, M_max, seed=0, U_fixed=None):
 
     for i in range(N_max):
         for j in range(M_max):
-            x_0 = rng.multivariate_normal(np.zeros(n), np.eye(n) * 0.2)
+            x_0 = rng.multivariate_normal(np.zeros(n), np.eye(n) * (0.2)**2)
             w = rng.multivariate_normal(np.zeros(n*t), sigmaw)
             all_xT_full[:, i, j] = np.linalg.matrix_power(A, t) @ x_0 + CT @ U_full[:, i] + NT @ w
 
@@ -364,6 +364,7 @@ for t in T_list:
     ratio2_runs = []
     ratio3_runs = []
     ratiok_runs = []
+    quant_runs = []
     A, B, CT = get_system(name, n, m, t, seed=0)
     print(t)
     Q_tilde = block_diag(*([Q] * t))
@@ -371,13 +372,12 @@ for t in T_list:
     NT = np.eye(n)
     for i in range(1, t):
         NT = np.hstack((NT, np.linalg.matrix_power(A, i)))
-
     sigmaw = np.eye(n*t) * sigma_2**2
     sigmaz = NT @ sigmaw @ NT.T + np.linalg.matrix_power(A, t) @ sigma_0 @ np.linalg.matrix_power(A, t).T
 
     #estimation
-    N = m*t +5
-    N_cal = 20
+    N = m*t +10
+    N_cal = 60
     for dataset in range(k_est):
         np.random.seed(dataset)
         U = np.random.randn(m*t, N) # input matrix
@@ -410,7 +410,7 @@ for t in T_list:
         CT_hat = X_bar @ U.T @ np.linalg.pinv(U @ U.T)
         sample_sigma = np.zeros((n, n))
         struct_sigma = np.zeros((n, n))
-
+        
         for i in range(N):
             for j in range(M):
                 diff = all_xT[:, i, j] - X_bar[:, i]
@@ -448,7 +448,7 @@ for t in T_list:
                 )
 
                 q = conformal_quantile(scores, delta)
-
+                quant_runs.append(q)
                 q_runs.append(q)
 
                 U_test = np.random.randn(m*t, N_test)
@@ -473,12 +473,12 @@ for t in T_list:
                 np.std(coverages)
         )
 
-            if delta == 0.30:
-                quant.append(np.mean(q_runs))
+            # if delta == 0.30:
+            #     quant.append(np.mean(q_runs))
 
             quantiles[t].append(np.mean(q_runs))
 
-        delta = 0.30
+        delta = 0.50
 
         scores = get_scores(
             U_cal,
@@ -504,8 +504,6 @@ for t in T_list:
         alpha2 = cp.Variable(m*t)
         alphak = cp.Variable(m*t)
         u = cp.Variable(m*t)
-        
-
         objective1 = cp.Minimize(cp.quad_form((U @ alpha1), Q_tilde))
         objective2 = cp.Minimize(cp.quad_form((alpha2), Q_tilde))
         objectivek = cp.Minimize(cp.quad_form((alphak), Q_tilde))
@@ -621,7 +619,7 @@ for t in T_list:
         struct_cost_runs.append(float(u2.T @ Q_tilde @ u2))
         known_cost_runs.append(float(uk.T @ Q_tilde @ uk))
         cp_cost_runs.append(float(u3.T @ Q_tilde @ u3))
-
+    quant.append(np.mean(quant_runs))
     sampleu.append(np.mean(sample_cost_runs))
     structu.append(np.mean(struct_cost_runs))
     originalu.append(np.mean(known_cost_runs))
@@ -707,8 +705,8 @@ plt.savefig('ratios_{}.jpeg'.format(M))
 plt.figure(figsize=(10,6))
 
 nominal = [1-d for d in delta_list]
-T_list = range(1, 25, 2)
-T_list_cov = range(1, 25, 2)
+T_list = range(1, 20, 2)
+T_list_cov = range(1, 20, 2)
 
 for t in T_list_cov:
 
@@ -854,7 +852,7 @@ for n in n_list:
 # Plot
 # -----------------------------
 plt.figure(figsize=(7,5))
-plt.plot(n_list, q_values, 'o-', linewidth=2, label = 'sigma = {}'.format(sigma))
+plt.plot(n_list, q_values, 'o-', linewidth=2)
 plt.xlabel(r"State dimension $n$", fontsize=13)
 plt.ylabel(r"$q_{1-\delta}$", fontsize=13)
 plt.grid(True)
