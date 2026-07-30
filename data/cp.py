@@ -23,14 +23,14 @@ Q = np.diag([2.0, 3.0, 4.0, 5.0])
 name = 'stable'
 epsilon = 2.4
 M = 100
-k_est = 1
+k_est = 10
 
 #to store optimal costs
 sampleu = []
 structu = []
 cpu = []
 originalu = []
-originalnd = []
+originalabsu = []
 
 quant = []
 empirical_coverage = {}
@@ -42,14 +42,14 @@ N_test = 1000
 ratios1 = []
 ratios2 = []
 ratiosk = []
-ratioskd = []
+ratiosabs = []
 ratios3 = []
 
 #to store final state deviation
 x1_dev = []
 x2_dev = []
 xk_dev = []
-xkd_dev = []
+xabs_dev = []
 x3_dev = []
 delta_folder = 'traj_{}'.format(delta)
 os.makedirs(delta_folder, exist_ok = True)
@@ -57,11 +57,13 @@ os.makedirs(delta_folder, exist_ok = True)
 
 def build_system_matrices(t):
     A, B, CT = get_system(name, n, m, t, seed=0)
-    
+    sigma = 0.3**2 * np.eye(n*t)
+    It = np.eye(t)
+    sigmaw = np.kron(It, sigma)
     NT = np.eye(n)
     for i in range(1, t):
         NT = np.hstack((NT, np.linalg.matrix_power(A, i)))
-    sigmaw = np.eye(n*t) * sigma_2**2
+    # sigmaw = np.eye(n*t) * sigma_2**2
     sigmaz = NT @ sigmaw @ NT.T + np.linalg.matrix_power(A, t) @ sigma_0 @ np.linalg.matrix_power(A, t).T
 
     return A, B, CT, NT, sigmaw, sigmaz
@@ -353,26 +355,31 @@ for t in T_list:
     sample_cost_runs = []
     struct_cost_runs = []
     cp_cost_runs = []
+    abs_cost_runs = []
     known_cost_runs = []
 
     sample_dev_runs = []
     struct_dev_runs = []
     cp_dev_runs = []
     known_dev_runs = []
+    abs_dev_runs = []
 
     ratio1_runs = []
     ratio2_runs = []
     ratio3_runs = []
     ratiok_runs = []
+    ratioabs_runs = []
     quant_runs = []
     A, B, CT = get_system(name, n, m, t, seed=0)
     print(t)
     Q_tilde = block_diag(*([Q] * t))
-
+    sigma = 0.3**2 * np.eye(n)
+    It = np.eye(t)
+    sigmaw = np.kron(It, sigma)
     NT = np.eye(n)
     for i in range(1, t):
         NT = np.hstack((NT, np.linalg.matrix_power(A, i)))
-    sigmaw = np.eye(n*t) * sigma_2**2
+    # sigmaw = np.eye(n*t) * sigma_2**2
     sigmaz = NT @ sigmaw @ NT.T + np.linalg.matrix_power(A, t) @ sigma_0 @ np.linalg.matrix_power(A, t).T
 
     #estimation
@@ -400,7 +407,7 @@ for t in T_list:
             sumx = np.zeros(n)
             for j in range(M):
                 x_0 =  np.random.multivariate_normal(np.zeros(n), sigma_0)
-                w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma_2**2)
+                w = np.random.multivariate_normal(np.zeros(n*t), sigmaw)
                 xT = np.linalg.matrix_power(A, t) @ x_0 + CT @ U[:,i] + NT@ w
                 all_xT[:, i, j] = xT
                 sumx = sumx + xT
@@ -504,35 +511,42 @@ for t in T_list:
         alpha2 = cp.Variable(m*t)
         alphak = cp.Variable(m*t)
         u = cp.Variable(m*t)
+        u4 = cp.Variable(m*t)
         objective1 = cp.Minimize(cp.quad_form((U @ alpha1), Q_tilde))
         objective2 = cp.Minimize(cp.quad_form((alpha2), Q_tilde))
         objectivek = cp.Minimize(cp.quad_form((alphak), Q_tilde))
         objective3 = cp.Minimize(cp.quad_form(u, Q_tilde))
+        objective4 = cp.Minimize(cp.quad_form(u4, Q_tilde))
 
         f1 = cp.quad_form(X_bar @ alpha1 - xf, np.linalg.inv(sample_sigma))
         f2 = cp.quad_form(CT_hat @ alpha2 - xf, np.linalg.inv(struct_sigma))
         fk = cp.quad_form(CT @ alphak - xf, np.linalg.inv(sigmaz))
         f3 = cp.quad_form(CT_hat @ u - xf, np.eye(n))
+        f4 = cp.quad_form(CT @ u4 - xf, np.eye(n))
 
         prob1 = cp.Problem(objective1, [f1 <= lambda_star])
         prob2 = cp.Problem(objective2, [f2 <= lambda_star])
         probk = cp.Problem(objectivek, [fk <= lambda_star])
         prob3 = cp.Problem(objective3, [f3 <= lambda_cp])
+        prob4 = cp.Problem(objective4, [f4 <= lambda_star])
 
         prob1.solve(solver = cp.SCS, verbose = False)
         prob2.solve(solver = cp.SCS, verbose = False)
         probk.solve(solver = cp.SCS, verbose = False)
         prob3.solve(solver = cp.SCS, verbose = False)
+        prob4.solve(solver = cp.SCS, verbose = False)
 
         a1 = alpha1.value
         a2 = alpha2.value
         ak = alphak.value
         u3 = u.value
+        u4 = u4.value
 
         u1 = U @ a1
         u2 = a2
         uk = ak
-
+        u4 = u4
+        
         if a1 is None:
             print(f"1st Convex solver failed at T={t}")
             continue
@@ -548,6 +562,9 @@ for t in T_list:
         if u3 is None:
             print(f"cp Convex solver failed at T={t}")
             continue
+        if u4 is None:
+            print(f"cp Convex solver failed at T={t}")
+            continue
 
         np.random.seed(0)
 
@@ -555,29 +572,22 @@ for t in T_list:
         x2 = []
         xk = []
         x3 = []
+        x4 = []
         
-
-        s1 = []
-        s2 = []
-        sk = []
-        s3 = []
-
-        for j in range(0, 2000):
+        for j in range(0, 5000):
             x_0 =  np.random.multivariate_normal(np.zeros(n), sigma_0)
-            w = np.random.multivariate_normal(np.zeros(n*t), np.eye(n*t)*sigma_2**2)
+            w = np.random.multivariate_normal(np.zeros(n*t), sigmaw)
             x1T = np.linalg.matrix_power(A, t) @ x_0 + CT @ u1 + NT@w
             x2T =  np.linalg.matrix_power(A, t) @ x_0+ CT_hat @ u2 + NT @ w  
             xkT = np.linalg.matrix_power(A, t) @ x_0+ CT @ uk + NT @ w  
             x3T = np.linalg.matrix_power(A, t) @ x_0+ CT_hat @ u3 + NT @ w
-            s1.append(x1T)
-            s2.append(x2T)
-            sk.append(xkT)
-            s3.append(x3T)
+            x4T = np.linalg.matrix_power(A, t) @ x_0 + CT @ u4 + NT @ w
         
             x1.append(X_bar @ a1-xf)
             x2.append(x2T-xf)
             xk.append(xkT-xf)
             x3.append(x3T-xf)
+            x4.append(x4T -xf)
 
         count1 = np.mean(x1, axis = 0).T @ np.linalg.inv(sample_sigma) @ np.mean(x1, axis = 0)  
         count2 =  np.mean(x2, axis = 0).T @ np.linalg.inv(struct_sigma) @ np.mean(x2, axis = 0)
@@ -602,57 +612,54 @@ for t in T_list:
         )
 
         cp_dev_runs.append(
-            np.mean(x3, axis=0).T @ np.linalg.pinv(sigmaz) @ np.mean(x3, axis=0)
+            np.mean(x3, axis=0).T @ np.mean(x3, axis=0)
         )
-
-        s1 = np.array(s1)
-        s2 = np.array(s2)
-        sk = np.array(sk)
-        s3 = np.array(s3)
+        abs_dev_runs.append(np.mean(x4, axis = 0).T @ np.mean(x4, axis = 0))
 
         u1 = u1.reshape(-1, 1)
         u2 = u2.reshape(-1, 1)
         uk = uk.reshape(-1, 1)
         u3 = u3.reshape(-1, 1)
+        u4 = u4.reshape(-1, 1)
 
         sample_cost_runs.append(float(u1.T @ Q_tilde @ u1))
         struct_cost_runs.append(float(u2.T @ Q_tilde @ u2))
         known_cost_runs.append(float(uk.T @ Q_tilde @ uk))
         cp_cost_runs.append(float(u3.T @ Q_tilde @ u3))
+        abs_cost_runs.append(float(u4.T @ Q_tilde @ u4))
     quant.append(np.mean(quant_runs))
     sampleu.append(np.mean(sample_cost_runs))
     structu.append(np.mean(struct_cost_runs))
     originalu.append(np.mean(known_cost_runs))
     cpu.append(np.mean(cp_cost_runs))
+    originalabsu.append(np.mean(abs_cost_runs))
 
     x1_dev.append(np.mean(sample_dev_runs))
     x2_dev.append(np.mean(struct_dev_runs))
     xk_dev.append(np.mean(known_dev_runs))
     x3_dev.append(np.mean(cp_dev_runs))
-
-    ratios1.append(np.mean(ratio1_runs))
-    ratios2.append(np.mean(ratio2_runs))
-    ratiosk.append(np.mean(ratiok_runs))
-    ratios3.append(np.mean(ratio3_runs))
-  
+    xabs_dev.append(np.mean(abs_dev_runs))
+ 
 plt.figure(figsize = (10, 6))
-plt.semilogy(T_list, x1_dev, 'o-', label = 'sample based MLE')
+# plt.semilogy(T_list, x1_dev, 'o-', label = 'sample based MLE')
 plt.semilogy(T_list, x2_dev, 'o-', label = 'structure MLE')
-plt.semilogy(T_list, xk_dev, 'o--', color = 'black', label = 'known dynamics')
+plt.semilogy(T_list, xk_dev, '--', color = 'black', label = 'normalized known')
 plt.semilogy(T_list, x3_dev, 'o-', label = 'conformal')
-plt.xlabel('time horizon')
-plt.ylabel('average deviation in terminal state')
+plt.semilogy(T_list, xabs_dev, 'o--', color = 'red', label = 'absolute known')
+plt.xlabel('T')
+plt.ylabel('mean deviation')
 plt.legend()
 plt.grid(True)
 plt.xticks(T_list)
 plt.savefig('dev_{}_{}_{}_{}.jpeg'.format(epsilon, delta, M, name))
 
 plt.figure(figsize = (10, 6))
-plt.semilogy(T_list, sampleu, 'o-', label = 'sample based MLE')
+# plt.semilogy(T_list, sampleu, 'o-', label = 'sample based MLE')
 plt.semilogy(T_list, structu, 'o-', label = 'structure MLE')
-plt.semilogy(T_list, originalu, 'o--', color = 'black', label = 'known dynamics')
+plt.semilogy(T_list, originalu, '--', color = 'black', label = 'normalized known')
 plt.semilogy(T_list, cpu, 'o-', label = 'conformal')
-plt.xlabel('time horizon')
+plt.semilogy(T_list, originalabsu, '--', color = 'red', label = 'absolute known')
+plt.xlabel('T')
 plt.ylabel('optimal cost')
 plt.legend()
 plt.grid(True)
@@ -663,45 +670,6 @@ lambda_star = find_lambda_star(n, epsilon, 1-delta)
 lambda_cp = (epsilon - q)**2  
 print(lambda_star)
 print(lambda_cp)
-
-plt.figure(figsize = (10, 6))
-plt.yscale('log')
-plt.plot(
-    T_list, ratios1, 'o-',
-    label=r'sample-based MLE, $\hat{\mu}_e^\top \hat{\Sigma}_e^{-1}\hat{\mu}_e$'
-)
-
-plt.plot(
-    T_list, ratios2, 'o-',
-    label=r'structure-aware MLE, $\hat{\mu}_e^\top \hat{\Sigma}_e^{-1}\hat{\mu}_e$'
-)
-
-plt.plot(
-    T_list, ratiosk, 'o--',
-    color='black',
-    label=r'known dynamics, $\mu_e^\top \Sigma_e^{-1}\mu_e$'
-)
-
-plt.plot(
-    T_list, ratios3, 'o-',
-    label=r'conformal, $\hat{\mu}_e^\top \hat{\Sigma}_e^{-1}\hat{\mu}_e$'
-)
-plt.axhline(y=lambda_star,
-            color='black',
-            linestyle=':',
-            linewidth=2,
-            label=r'$\lambda^*$')
-plt.axhline(y=lambda_cp,
-            linestyle=':',
-            linewidth=2,
-            label=r'$\lambda_{cp}$')
-plt.xlabel('time horizon')
-# plt.ylabel(r'$\mu_e^\top \Sigma_e^{-1}\mu_e$')
-plt.legend()
-plt.grid(True)
-plt.xticks(T_list)
-plt.savefig('ratios_{}.jpeg'.format(M))
-
 plt.figure(figsize=(10,6))
 
 nominal = [1-d for d in delta_list]
@@ -709,12 +677,10 @@ T_list = range(1, 20, 2)
 T_list_cov = range(1, 20, 2)
 
 for t in T_list_cov:
-
     cover = [
         empirical_coverage[t][d][0]
         for d in delta_list
     ]
-
     plt.plot(
         nominal,
         cover,
@@ -777,24 +743,18 @@ for n in n_list:
     # Build system
     # -----------------------------
     A, B, CT = get_system("stable", n, m, T, seed=0)
-    sigma_0_mat = 0.2 * np.eye(n)
-
-    w_cal_train = np.random.multivariate_normal(
-        np.zeros(n*T),
-        np.eye(n*T),
+    w_cal_train = np.random.multivariate_normal(np.zeros(n*T), 
+        np.kron(np.eye(T),np.eye(n)*sigma_2**2),
         size=N_cal
     )
-
     x_cal_train = np.random.multivariate_normal(
         np.zeros(n),
         np.eye(n),
         size=N_cal
     )
-
     NT = np.eye(n)
     for k in range(1, T):
         NT = np.hstack((NT, np.linalg.matrix_power(A, k)))
-
     # -----------------------------
     # Generate training data
     # -----------------------------
@@ -813,10 +773,7 @@ for n in n_list:
             x_0 = np.random.multivariate_normal(
             np.zeros(n),
             sigma_1**2 * np.eye(n))
-            w = np.random.multivariate_normal(
-                np.zeros(n*T),
-                sigma_2**2 * np.eye(n*T)
-            )
+            w = np.random.multivariate_normal(np.zeros(n*T), np.kron(np.eye(T),np.eye(n)*sigma_2**2))
 
             xT = np.linalg.matrix_power(A, T)@x_0 +  CT @ U[:, i] + NT @ w
             x_avg += xT

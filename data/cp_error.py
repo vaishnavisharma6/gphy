@@ -14,6 +14,7 @@ import matplotlib.patches as patches
 n,m = 4,4
 xf = np.array([4.0, 5.0, 6.0, 7.0])
 T_list = range(1, 25, 2)
+
 sigma_1 = 0.2
 sigma_2 = 0.3
 sigma_0 = np.eye(n) * sigma_1**2
@@ -25,43 +26,20 @@ epsilon = 2.4
 M = 100
 k_est = 10
 
-#to store optimal costs
-sampleu = []
-structu = []
-cpu = []
-originalu = []
-originalnd = []
-
-quant = []
-empirical_coverage = {}
-quantiles = {}
-delta_list = [0.30, 0.20, 0.10, 0.05, 0.01]
 num_runs = 20
 N_test = 1000
 
-ratios1 = []
-ratios2 = []
-ratiosk = []
-ratioskd = []
-ratios3 = []
 
 #to store final state deviation
-x1_dev = []
-x2_dev = []
-xk_dev = []
-xkd_dev = []
-x3_dev = []
-delta_folder = 'traj_{}'.format(delta)
-os.makedirs(delta_folder, exist_ok = True)
-
-
 def build_system_matrices(t):
     A, B, CT = get_system(name, n, m, t, seed=0)
-    
+    sigma = 0.3**2 * np.eye(n) 
+    It = np.eye(t)
+    sigmaw = np.kron(It, sigma)
     NT = np.eye(n)
     for i in range(1, t):
         NT = np.hstack((NT, np.linalg.matrix_power(A, i)))
-    sigmaw = np.eye(n*t) * sigma_2**2
+    # sigmaw = np.eye(n*t) * 0.3**2
     sigmaz = NT @ sigmaw @ NT.T + np.linalg.matrix_power(A, t) @ sigma_0 @ np.linalg.matrix_power(A, t).T
 
     return A, B, CT, NT, sigmaw, sigmaz
@@ -82,7 +60,7 @@ def generate_nested_data(t, N_max, M_max, seed=0, U_fixed=None):
 
     for i in range(N_max):
         for j in range(M_max):
-            x_0 = rng.multivariate_normal(np.zeros(n), np.eye(n) * 0.2)
+            x_0 = rng.multivariate_normal(np.zeros(n), np.eye(n) * 0.2**2)
             w = rng.multivariate_normal(np.zeros(n*t), sigmaw)
             all_xT_full[:, i, j] = np.linalg.matrix_power(A, t) @ x_0 + CT @ U_full[:, i] + NT @ w
 
@@ -265,87 +243,6 @@ def average_bias_variance_nested(t, N_list=None, M_list=None, N_fixed=None, M_fi
         sig_s_bias, sig_st_bias, sig_s_var, sig_st_var
     )
 
-def conformal_quantile(scores, delta):
-    N_cal = len(scores)
-
-    k = int(np.ceil((N_cal + 1) * (1 - delta)))
-    k = min(k, N_cal)
-
-    q = np.sort(scores)[k - 1]
-
-    return q
-
-
-def get_scores(U_cal, N_cal, CT_hat, A, NT, CT, t, sigma, sigma1, w_cal_train, x_cal_train):
-    scores = []
-    for i in range(N_cal):
-        w =  sigma1 * w_cal_train[i]
-        x_0 = sigma * x_cal_train[i]
-        # x_0 = np.random.multivariate_normal(np.zeros(n), sigma_0)
-        x_true = np.linalg.matrix_power(A, t) @ x_0+ CT @ U_cal[:, i] + NT@w
-        x_cal = CT_hat @ U_cal[:, i]
-        scores.append(np.linalg.norm(x_true - x_cal))
-
-    return(np.array(scores))
-
-
-def get_test_scores(U_test, CT_hat, A,  NT, CT, t, sigma, sigma1):
-
-    scores = []
-
-    for i in range(U_test.shape[1]):
-
-        w = np.random.multivariate_normal(
-            np.zeros(n*t),
-            np.eye(n*t) * sigma1**2
-        )
-        x_0 = np.random.multivariate_normal(
-            np.zeros(n),
-            np.eye(n)*sigma**2
-        )
-
-        x_true = np.linalg.matrix_power(A, t) @x_0 + CT @ U_test[:, i] + NT @ w
-        x_pred = CT_hat @ U_test[:, i]
-
-        score = np.linalg.norm(x_true - x_pred)
-
-        scores.append(score)
-
-    return np.array(scores)
-
-def find_lambda_star(n, epsilon, delta):
-    """
-    Solves F_{chi^2_n(lambda)}(epsilon^2) = delta
-    for lambda >= 0.
-    
-    Parameters:
-    n       : degrees of freedom
-    epsilon : radius (so we evaluate CDF at epsilon^2)
-    delta   : probability level
-    
-    Returns:
-    lambda_star
-    """
-    
-    x = epsilon**2
-
-    # Define equation to solve
-    def equation(lam):
-        return ncx2.cdf(x, df=n, nc=lam) - delta
-
-    # We search in a reasonable interval for lambda
-    # Lower bound = 0
-    # Upper bound chosen large enough
-    lam_lower = 0.0
-    lam_upper = 1e11
-
-    # Ensure bracket contains root
-    if equation(lam_lower) * equation(lam_upper) > 0:
-        raise ValueError("Root not bracketed. Increase lam_upper.")
-
-    lambda_star = brentq(equation, lam_lower, lam_upper)
-    
-    return lambda_star
 
 n, m = 4, 4
 Q = np.diag([2.0, 3.0, 4.0, 5.0])
@@ -353,8 +250,8 @@ t_fixed = 5
 N_fixed = 80
 M_fixed = 80
 
-M_list = [5, 10, 20, 40, 80, 120, 140, 180]
-N_list = [10, 20, 40, 80, 160, 320, 640]
+M_list = [5, 10, 20, 40, 80, 120, 140, 180, 220, 260]
+N_list = [10, 20, 40, 80, 160, 320, 640, 700, 720, 900]
 
 K_errors = 40          # number of independent estimates for averaged error curves
 K_bias_var = 40        # number of independent estimates for bias-variance curves
@@ -391,28 +288,29 @@ fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
 axes[0, 0].loglog(M_list, mu_samp_M, '^-', label='sample')
 axes[0, 0].loglog(M_list, mu_struct_M, '^-', label='structure')
-axes[0, 0].set_xlabel('M')
+axes[0, 0].set_xlabel(r'$N_r$')
 axes[0, 0].set_ylabel(r'Average $\|\hat{\mu}_X - \mu_X\|_2$')
 axes[0, 0].legend()
 axes[0, 0].grid(True, which="both", alpha=0.3)
 
-axes[0, 1].loglog(M_list, sig_samp_M, '^-', label='sample')
-axes[0, 1].loglog(M_list, sig_struct_M, '^-', label='structure')
-axes[0, 1].set_xlabel('M')
-axes[0, 1].set_ylabel(r'Average $\|\hat{\Sigma}_{x_T} - \Sigma_{x_T}\|_2$')
+axes[0, 1].loglog(N_list, mu_samp_N, '^-', label='sample')
+axes[0, 1].loglog(N_list, mu_struct_N, '^-', label='structure')
+axes[0, 1].set_xlabel(r'$N_e$')
+axes[0, 1].set_ylabel(r'Average $\|\hat{\mu}_X - \mu_X\|_2$')
 axes[0, 1].legend()
 axes[0, 1].grid(True, which="both", alpha=0.3)
 
-axes[1, 0].loglog(N_list, mu_samp_N, '^-', label='sample')
-axes[1, 0].loglog(N_list, mu_struct_N, '^-', label='structure')
-axes[1, 0].set_xlabel('N')
-axes[1, 0].set_ylabel(r'Average $\|\hat{\mu}_X - \mu_X\|_2$')
+axes[1, 0].loglog(M_list, sig_samp_M, '^-', label='sample')
+axes[1, 0].loglog(M_list, sig_struct_M, '^-', label='structure')
+axes[1, 0].set_xlabel(r'$N_r$')
+axes[1, 0].set_ylabel(r'Average $\|\hat{\Sigma}_{x_T} - \Sigma_{x_T}\|_2$')
 axes[1, 0].legend()
 axes[1, 0].grid(True, which="both", alpha=0.3)
 
+
 axes[1, 1].loglog(N_list, sig_samp_N, '^-', label='sample')
 axes[1, 1].loglog(N_list, sig_struct_N, '^-', label='structure')
-axes[1, 1].set_xlabel('N')
+axes[1, 1].set_xlabel(r'$N_e$')
 axes[1, 1].set_ylabel(r'Average $\|\hat{\Sigma}_{x_T} - \Sigma_{x_T}\|_2$')
 axes[1, 1].legend()
 axes[1, 1].grid(True, which="both", alpha=0.3)
@@ -427,14 +325,14 @@ plt.close()
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-axes[0].loglog(M_list, CT_err_M, '^-', label=r'$\hat{C}_T$ error')
-axes[0].set_xlabel('M')
+axes[0].loglog(M_list, CT_err_M, '^-')
+axes[0].set_xlabel(r'$N_r$')
 axes[0].set_ylabel(r'Average $\|\hat{C}_T - C_T\|_2$')
 axes[0].legend()
 axes[0].grid(True, which="both", alpha=0.3)
 
-axes[1].loglog(N_list, CT_err_N, '^-', label=r'$\hat{C}_T$ error')
-axes[1].set_xlabel('N')
+axes[1].loglog(N_list, CT_err_N, '^-')
+axes[1].set_xlabel(r'$N_e$')
 axes[1].set_ylabel(r'Average $\|\hat{C}_T - C_T\|_2$')
 axes[1].legend()
 axes[1].grid(True, which="both", alpha=0.3)
