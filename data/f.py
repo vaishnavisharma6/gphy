@@ -1,64 +1,87 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from datagen import get_system
-import os
-import math
-import cvxpy as cp
 from scipy.linalg import block_diag
-from scipy.stats import ncx2
 from scipy.optimize import brentq
-import matplotlib.patches as patches
 
 
 # ============================================================
-# 1. Define C_T, Q, Sigma_e, and x_f
+# 1. Define system
 # ============================================================
 
-# Example dimensions
 n = 5
 m = 2
 T = 2
+
 sigma_1 = 0.2
 sigma_2 = 0.3
+
 sigma_0 = np.eye(n) * sigma_1**2
-x_0 =  np.random.multivariate_normal(np.zeros(n), sigma_0)
 
-A, B, C_T = get_system('stable', n, m, T, seed=0)
+x_0 = np.random.multivariate_normal(
+    np.zeros(n),
+    sigma_0
+)
 
-# Positive definite Q
-Q = np.diag([2.0, 3.0])
-Q = block_diag(*([Q] * T))
-# Positive definite Sigma_e
-sigma = 0.3**2 * np.eye(n*T)
-It = np.eye(T)
-sigmaw = np.kron(It, sigma)
+A, B, C_T = get_system(
+    'stable',
+    n,
+    m,
+    T,
+    seed=0
+)
+
+
+# ============================================================
+# 2. Control cost matrix Q
+# ============================================================
+
+Q_single = np.diag([2.0, 3.0])
+Q = block_diag(*([Q_single] * T))
+
+Q_inv = np.linalg.inv(Q)
+
+
+# ============================================================
+# 3. Construct Sigma_e
+# ============================================================
+
+sigmaw = np.eye(n * T) * sigma_2**2
+
 NT = np.eye(n)
-for i in range(1, T):
-    NT = np.hstack((NT, np.linalg.matrix_power(A, i)))
-sigmaw = np.eye(n*T) * sigma_2**2
-Sigma_e = NT @ sigmaw @ NT.T + np.linalg.matrix_power(A, T) @ sigma_0 @ np.linalg.matrix_power(A, T).T
 
-# Target state
+for i in range(1, T):
+    NT = np.hstack(
+        (
+            NT,
+            np.linalg.matrix_power(A, i)
+        )
+    )
+
+Sigma_e = (
+    NT @ sigmaw @ NT.T
+    + np.linalg.matrix_power(A, T)
+    @ sigma_0
+    @ np.linalg.matrix_power(A, T).T
+)
+
+
+# ============================================================
+# 4. Target state
+# ============================================================
+
 x_f = np.random.randn(n, 1)
 
 
 # ============================================================
-# 2. Compute Sigma_e^{-1}
+# 5. Compute Sigma_e^{-1}
 # ============================================================
 
 Sigma_e_inv = np.linalg.inv(Sigma_e)
 
 
 # ============================================================
-# 3. Compute gamma_0
-#
-# gamma_0 =
-# x_f^T [
-#     Sigma_e^{-1}
-#     - Sigma_e^{-1} C_T
-#       (C_T^T Sigma_e^{-1} C_T)^dagger
-#       C_T^T Sigma_e^{-1}
-# ] x_f
+# 6. Compute gamma_0
 # ============================================================
 
 M = C_T.T @ Sigma_e_inv @ C_T
@@ -78,13 +101,13 @@ gamma_0 = (
 
 
 # ============================================================
-# 4. Compute upper limit
-#
-# f(0+) = x_f^T Sigma_e^{-1} x_f
+# 7. Compute f(0+)
 # ============================================================
 
 gamma_max = (
-    x_f.T @ Sigma_e_inv @ x_f
+    x_f.T
+    @ Sigma_e_inv
+    @ x_f
 ).item()
 
 
@@ -96,11 +119,7 @@ print(f"f(0+)     = {gamma_max:.6f}")
 
 
 # ============================================================
-# 5. Choose gamma
-#
-# gamma_0 < gamma < x_f^T Sigma_e^{-1} x_f
-#
-# Choose gamma halfway between the two limits.
+# 8. Choose gamma
 # ============================================================
 
 gamma = gamma_0 + 0.5 * (gamma_max - gamma_0)
@@ -111,17 +130,8 @@ assert gamma_0 < gamma < gamma_max
 
 
 # ============================================================
-# 6. Define f(nu)
-#
-# S(nu) = Sigma_e / nu
-#         + C_T Q^{-1} C_T^T
-#
-# f(nu) = (1/nu^2)
-#         x_f^T S^{-1} Sigma_e S^{-1} x_f
+# 9. Define f(nu)
 # ============================================================
-
-Q_inv = np.linalg.inv(Q)
-
 
 def f(nu):
 
@@ -130,8 +140,10 @@ def f(nu):
         + C_T @ Q_inv @ C_T.T
     )
 
-    # Solve S y = x_f rather than explicitly computing S^{-1}
-    y = np.linalg.solve(S, x_f)
+    y = np.linalg.solve(
+        S,
+        x_f
+    )
 
     return (
         (1.0 / nu**2)
@@ -140,32 +152,27 @@ def f(nu):
 
 
 # ============================================================
-# 7. Evaluate f(nu)
+# 10. Evaluate f(nu)
 # ============================================================
 
-# Logarithmic grid because nu can span several orders
-# of magnitude.
-
-nu_values = np.logspace(-4, 4, 2000)
+nu_values = np.logspace(
+    -4.5,
+    4,
+    2000
+)
 
 f_values = np.array([
-    f(nu) for nu in nu_values
+    f(nu)
+    for nu in nu_values
 ])
 
 
 # ============================================================
-# 8. Find nu* satisfying
-#
-# f(nu*) = gamma
-#
-# i.e.
-#
-# f(nu*) - gamma = 0
+# 11. Find nu*
 # ============================================================
 
 g_values = f_values - gamma
 
-# Find intervals in which the function changes sign
 idx = np.where(
     g_values[:-1] * g_values[1:] < 0
 )[0]
@@ -179,9 +186,6 @@ if len(idx) == 0:
     nu_star = None
 
 else:
-
-    # For the theoretically unique solution,
-    # we use the first sign change.
 
     i = idx[0]
 
@@ -197,95 +201,174 @@ else:
     print(f"nu*       = {nu_star:.6f}")
     print(f"f(nu*)    = {f(nu_star):.6f}")
     print(f"gamma     = {gamma:.6f}")
-    print(f"error     = {abs(f(nu_star) - gamma):.3e}")
+    print(
+        f"error     = "
+        f"{abs(f(nu_star) - gamma):.3e}"
+    )
 
 
 # ============================================================
-# 9. Plot f(nu)
+# 12. Plot
 # ============================================================
 
-plt.figure(figsize=(8, 5))
+fig, ax = plt.subplots(figsize=(8, 5))
 
+# ------------------------------------------------------------
 # f(nu)
-plt.plot(
+# ------------------------------------------------------------
+
+ax.plot(
     nu_values,
     f_values,
-    linewidth=2,
-    label=r"$f(\nu)$"
+    linewidth=2
 )
 
-# gamma
-plt.axhline(
-    gamma,
-    linestyle="--",
-    linewidth=1.5,
-    label=r"$\gamma$"
+
+# ------------------------------------------------------------
+# Log x-axis
+# ------------------------------------------------------------
+
+ax.set_xscale("log")
+
+ax.set_xlim(
+    nu_values[0],
+    nu_values[-1]
 )
 
-# gamma_0 = limiting value as nu -> infinity
-plt.axhline(
+ax.set_ylim(
+    0,
+    gamma_max * 1.05
+)
+
+
+# ------------------------------------------------------------
+# Remove all default x ticks
+# ------------------------------------------------------------
+
+ax.set_xticks([])
+ax.set_xticklabels([])
+
+
+# ============================================================
+# 13. gamma_0 horizontal line
+# ============================================================
+
+ax.axhline(
     gamma_0,
     linestyle="-.",
-    linewidth=1.5,
-    label=r"$\gamma_0=f(\infty)$"
-)
-
-# f(0+) = x_f^T Sigma_e^{-1} x_f
-plt.axhline(
-    gamma_max,
-    linestyle=":",
-    linewidth=1.5,
-    label=r"$f(0^+)=x_f^\top\Sigma_e^{-1}x_f$"
+    linewidth=1.5
 )
 
 
 # ============================================================
-# 10. Mark nu*
+# 14. gamma horizontal line
+#
+# Starts exactly at the left boundary of the axes and ends
+# at nu*
 # ============================================================
 
 if nu_star is not None:
 
-    plt.axvline(
-        nu_star,
-        linestyle=":",
-        linewidth=1.5,
-        label=rf"$\nu^*={nu_star:.3f}$"
+    ax.plot(
+        [nu_values[0], nu_star],
+        [gamma, gamma],
+        linestyle="--",
+        linewidth=1.5
     )
 
-    plt.scatter(
+
+# ============================================================
+# 15. nu* vertical line
+#
+# Starts exactly from the x-axis (y = 0)
+# ============================================================
+
+if nu_star is not None:
+
+    ax.plot(
+        [nu_star, nu_star],
+        [0, gamma],
+        linestyle=":",
+        linewidth=1.5
+    )
+
+    ax.scatter(
         [nu_star],
         [gamma],
-        s=80,
+        s=60,
         zorder=5
     )
 
 
 # ============================================================
-# 11. Formatting
+# 16. Y-axis markings
 # ============================================================
 
-plt.xscale("log")
+ax.set_yticks([
+    gamma_0,
+    gamma,
+    gamma_max
+])
 
-plt.xlabel(
-    r"$\nu$",
-    fontsize=15
+ax.set_yticklabels([
+    r"$\gamma_0$",
+    r"$\gamma$",
+    r"$f(0^+)$"
+], fontsize=14)
+
+
+# ============================================================
+# 17. X-axis marking for nu*
+# ============================================================
+
+if nu_star is not None:
+
+    ax.annotate(
+        r"$\nu_T^*$",
+        xy=(nu_star, 0),
+        xycoords="data",
+        xytext=(0, -12),
+        textcoords="offset points",
+        ha="center",
+        va="top",
+        fontsize=14
+    )
+
+
+# ============================================================
+# 18. Mark zero at left side of x-axis
+# ============================================================
+
+ax.annotate(
+    r"$0$",
+    xy=(nu_values[0], 0),
+    xycoords="data",
+    xytext=(0, -12),
+    textcoords="offset points",
+    ha="center",
+    va="top",
+    fontsize=14
 )
 
-plt.ylabel(
-    r"$f(\nu)$",
-    fontsize=15
+
+# ============================================================
+# 19. Labels
+# ============================================================
+
+ax.set_ylabel(
+    r"$f(\nu_T)$",
+    fontsize=16
 )
 
-plt.grid(
-    True,
-    which="both",
-    alpha=0.3
+ax.set_xlabel(
+    r"$\nu_T$",
+    fontsize=16
 )
 
-plt.legend(
-    fontsize=11
-)
+
+# ============================================================
+# 20. Final formatting
+# ============================================================
 
 plt.tight_layout()
-
-plt.savefig('f.jpeg')
+plt.show()
