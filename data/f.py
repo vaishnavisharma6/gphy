@@ -213,6 +213,7 @@ else:
 
 fig, ax = plt.subplots(figsize=(8, 5))
 
+
 # ------------------------------------------------------------
 # f(nu)
 # ------------------------------------------------------------
@@ -242,11 +243,24 @@ ax.set_ylim(
 
 
 # ------------------------------------------------------------
-# Remove all default x ticks
+# Show a few x-values
 # ------------------------------------------------------------
 
-ax.set_xticks([])
-ax.set_xticklabels([])
+ax.set_xticks([
+    1e-4,
+    1e-2,
+    1,
+    1e2,
+    1e4
+])
+
+ax.set_xticklabels([
+    r"$10^{-4}$",
+    r"$10^{-2}$",
+    r"$10^{0}$",
+    r"$10^{2}$",
+    r"$10^{4}$"
+], fontsize=11)
 
 
 # ============================================================
@@ -304,17 +318,39 @@ if nu_star is not None:
 # 16. Y-axis markings
 # ============================================================
 
+# Candidate intermediate values
+candidates = np.linspace(
+    0.15 * gamma_max,
+    0.85 * gamma_max,
+    8
+)
+
+# Remove values too close to gamma
+candidates = [
+    y for y in candidates
+    if not np.isclose(
+        y,
+        gamma,
+        rtol=0.05,
+        atol=0.01
+    )
+]
+
+# Choose two intermediate values
+y1 = candidates[0]
+y2 = candidates[-1]
+
 ax.set_yticks([
-    gamma_0,
-    gamma,
-    gamma_max
+    y1,
+    y2,
+    gamma
 ])
 
 ax.set_yticklabels([
-    r"$\gamma_0$",
-    r"$\gamma$",
-    r"$f(0^+)$"
-], fontsize=14)
+    rf"${y1:.2f}$",
+    rf"${y2:.2f}$",
+    r"$\gamma$"
+], fontsize=12)
 
 
 # ============================================================
@@ -339,16 +375,16 @@ if nu_star is not None:
 # 18. Mark zero at left side of x-axis
 # ============================================================
 
-ax.annotate(
-    r"$0$",
-    xy=(nu_values[0], 0),
-    xycoords="data",
-    xytext=(0, -12),
-    textcoords="offset points",
-    ha="center",
-    va="top",
-    fontsize=14
-)
+# ax.annotate(
+#     r"$0$",
+#     xy=(nu_values[0], 0),
+#     xycoords="data",
+#     xytext=(0, -12),
+#     textcoords="offset points",
+#     ha="center",
+#     va="top",
+#     fontsize=14
+# )
 
 
 # ============================================================
@@ -371,4 +407,10 @@ ax.set_xlabel(
 # ============================================================
 
 plt.tight_layout()
+
+plt.savefig(
+    "f.jpeg",
+    dpi=300
+)
+
 plt.show()
