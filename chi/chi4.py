@@ -9,7 +9,7 @@ import math
 import os
 from datagen import get_system
 from functools import reduce
-from plot import opt, diff
+# from plot import opt, diff
 from scipy.integrate import quad
 from scipy.stats import chi2
 from scipy.stats import norm
@@ -25,12 +25,13 @@ x_0 = np.array([1.0, 2.0, 3.0, 4.0])
 x_f = np.array([4.0, 5.0, 6.0, 7.0])
 T_list = range(1, 18, 2)  
 sigma_0 = np.eye(n) * 0.1
-sigma_w_base = np.eye(n) * 0.1
+sigma_w_base = np.eye(n) * 0.7
 delta = 0.3
 Q = np.diag([2.0, 3.0, 4.0, 5.0])
 q = norm.ppf(1 - delta)
 u_norm_diff_list = []
 state_dev_diff_list = []
+bT = []
 name = 'unstable'
 norm_folder = 'unorms_{}'.format(name)
 state_folder = 'ustates_{}'.format(name)
@@ -187,7 +188,7 @@ for t in T_list:
     traceSigma = np.trace(sigma_z)
 
     tau = 2 * np.trace(sigma_z @ sigma_z)
-    b = (np.linalg.matrix_power(A, t) @ x_0) - x_f
+    b = -1 * x_f
     vals = np.linalg.eigvals(sigma_z)
     eig = np.max(vals)
     gamma = epsilon**2 - n
@@ -230,8 +231,9 @@ for t in T_list:
         print(f'Convex solver failed at T={t}')
     if u_c5 is None:
         print(f'Convex solver failed at T={t}')    
-      
 
+    bT.append(b.T @ np.linalg.inv(sigma_z) @ b)   
+    
     # --- Simulate both systems ---
     np.random.seed(0)
     x1 = []
@@ -346,6 +348,10 @@ for t in T_list:
     plt.savefig(filename5)
 
 plt.close()
+plt.figure(figsize = (10, 6))
+plt.plot(T_list, bT)
+plt.axhline(y=lambda_star, color = 'r', linestyle = '--', label = r'$\gamma$')
+plt.savefig('bT.jpeg')
 
 N = np.arange(0, len(ratios1))
 plt.figure(figsize = (10, 6))
@@ -542,3 +548,4 @@ plt.legend()
 plt.grid(True)
 plt.savefig('udeviation_vs_gamma_allT.jpeg')
 plt.show()
+

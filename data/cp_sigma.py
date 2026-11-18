@@ -1,13 +1,65 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from datagen import get_system
-import os
-import math
 import cvxpy as cp
+from scipy.optimize import minimize
+from scipy.stats import norm
 from scipy.linalg import block_diag
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import math
+import os
+from datagen import get_system
+from functools import reduce
+# from plot import opt, diff
+from scipy.integrate import quad
+from scipy.stats import chi2
+from scipy.stats import norm
+from matplotlib.patches import Circle
 from scipy.stats import ncx2
 from scipy.optimize import brentq
-import matplotlib.patches as patches
+import GPy
+from matplotlib.lines import Line2D
+from matplotlib.ticker import FuncFormatter
+
+
+# ============================================================
+# Publication-quality plotting settings for Overleaf / IEEE
+# Designed for TWO PANELS inside ONE IEEE column
+# ============================================================
+mpl.rcParams.update({
+    "text.usetex": False,
+
+    "font.family": "serif",
+    "font.serif": [
+        "Times New Roman",
+        "Times",
+        "Nimbus Roman No9 L",
+        "DejaVu Serif"
+    ],
+
+    # thinner-looking math
+    "mathtext.fontset": "cm",
+
+    # explicitly avoid bold axis text
+    "font.weight": "normal",
+    "axes.labelweight": "normal",
+
+    "font.size": 8.0,
+    "axes.labelsize": 7.5,
+    "axes.titlesize": 8.0,
+    "legend.fontsize": 6.5,
+    "xtick.labelsize": 7.0,
+    "ytick.labelsize": 7.0,
+
+    "lines.linewidth": 0.90,
+    "axes.linewidth": 0.65,
+
+    "xtick.major.width": 0.6,
+    "ytick.major.width": 0.6,
+
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+})
 
 #system and parameters
 

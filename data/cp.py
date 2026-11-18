@@ -1,817 +1,1765 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from datagen import get_system
 import os
-import math
-import cvxpy as cp
-from scipy.linalg import block_diag
-from scipy.stats import ncx2
-from scipy.optimize import brentq
-import matplotlib.patches as patches
+import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
-#system and parameters
+from datagen import get_system
 
-n,m = 4,4
-xf = np.array([4.0, 5.0, 6.0, 7.0])
-T_list = range(1, 20, 2)
-sigma_1 = 0.2
-sigma_2 = 0.3
-sigma_0 = np.eye(n) * sigma_1**2
-x_0 =  np.random.multivariate_normal(np.zeros(n), sigma_0)
-delta = 0.5
-Q = np.diag([2.0, 3.0, 4.0, 5.0])
-name = 'stable'
-epsilon = 2.4
+
+# ============================================================
+# IEEE / OVERLEAF PUBLICATION SETTINGS
+# ============================================================
+
+mpl.rcParams.update({
+    "text.usetex": False,
+
+    # IEEE-compatible serif text + Times-like math
+    "font.family": "serif",
+    "font.serif": [
+        "Times New Roman",
+        "Times",
+        "Nimbus Roman No9 L",
+        "DejaVu Serif",
+    ],
+
+    "mathtext.fontset": "stix",
+
+    # IEEE-friendly sizes
+    "font.size": 8.0,
+    "axes.labelsize": 8.0,
+    "axes.titlesize": 8.0,
+    "legend.fontsize": 6.4,
+    "xtick.labelsize": 7.0,
+    "ytick.labelsize": 7.0,
+
+    # Thin publication-style lines
+    "font.weight": "normal",
+    "axes.labelweight": "normal",
+    "lines.linewidth": 0.65,
+    "axes.linewidth": 0.65,
+
+    # Compact ticks
+    "xtick.major.width": 0.6,
+    "ytick.major.width": 0.6,
+    "xtick.major.size": 3.0,
+    "ytick.major.size": 3.0,
+
+    # Keep vector text editable/searchable in PDF
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+
+    # High-resolution PNG fallback
+    "savefig.dpi": 600,
+})
+
+
+# ============================================================
+# IEEE FIGURE HELPERS
+# ============================================================
+
+def style_ieee_axis(ax):
+    """Apply compact IEEE publication style."""
+
+    ax.grid(
+        True,
+        which="major",
+        linestyle=":",
+        linewidth=0.45,
+        alpha=0.45,
+    )
+
+    ax.tick_params(
+        direction="in",
+        top=True,
+        right=True,
+        pad=2,
+    )
+
+    ax.margins(x=0.02)
+
+
+def set_compact_font_sizes(ax):
+    """Same compact axis sizes as the reference plots."""
+
+    ax.xaxis.label.set_size(6.5)
+    ax.yaxis.label.set_size(6.5)
+
+    ax.tick_params(
+        labelsize=5.8
+    )
+
+
+def save_ieee_figure(fig, stem):
+    """Save PDF and 600-dpi PNG."""
+
+    fig.savefig(
+        f"{stem}.pdf",
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
+
+    fig.savefig(
+        f"{stem}.png",
+        dpi=600,
+        bbox_inches="tight",
+        pad_inches=0.02,
+    )
+
+
+# ============================================================
+# GLOBAL PARAMETERS
+# ============================================================
+
+name = "stable"
+
+# Default dimensions
+n_default = 4
+m = 4
+
+# Default horizon
+T_default = 8
+
+# Horizon used for sigma_0 / sigma sensitivity studies.
+# Keep equal to T_default for direct comparison.
+# For a stable A, you may later set this to 4 if you want
+# the initial-state effect to be more visually pronounced.
+T_sensitivity = T_default
+
+
+# ============================================================
+# UNCERTAINTY PARAMETERS
+#
+# Sigma_0 = sigma_0^2 I
+# Sigma_w = sigma^2 I
+# ============================================================
+
+sigma0_default = 0.2
+sigma_default = 0.4
+
+
+# ============================================================
+# DATA PARAMETERS
+# ============================================================
+
+# Repeated experiments for estimating C_T
 M = 100
-k_est = 10
 
-#to store optimal costs
-sampleu = []
-structu = []
-cpu = []
-originalu = []
-originalabsu = []
+# Calibration samples
+N_cal = 100
 
-quant = []
-empirical_coverage = {}
-quantiles = {}
-delta_list = [0.30, 0.20, 0.10, 0.05, 0.01]
+# Independent test samples for coverage
+N_test = 2000
+
+# Independent Monte-Carlo datasets
 num_runs = 20
-N_test = 1000
-
-ratios1 = []
-ratios2 = []
-ratiosk = []
-ratiosabs = []
-ratios3 = []
-
-#to store final state deviation
-x1_dev = []
-x2_dev = []
-xk_dev = []
-xabs_dev = []
-x3_dev = []
-delta_folder = 'traj_{}'.format(delta)
-os.makedirs(delta_folder, exist_ok = True)
 
 
-def build_system_matrices(t):
-    A, B, CT = get_system(name, n, m, t, seed=0)
-    sigma = 0.3**2 * np.eye(n*t)
-    It = np.eye(t)
-    sigmaw = np.kron(It, sigma)
-    NT = np.eye(n)
-    for i in range(1, t):
-        NT = np.hstack((NT, np.linalg.matrix_power(A, i)))
-    # sigmaw = np.eye(n*t) * sigma_2**2
-    sigmaz = NT @ sigmaw @ NT.T + np.linalg.matrix_power(A, t) @ sigma_0 @ np.linalg.matrix_power(A, t).T
+# ============================================================
+# CONFORMAL PARAMETERS
+# ============================================================
 
-    return A, B, CT, NT, sigmaw, sigmaz
+# Fixed delta for all q plots
+delta_q = 0.30
 
-
-def generate_nested_data(t, N_max, M_max, seed=0, U_fixed=None):
- 
-    rng = np.random.default_rng(seed)
-    A, B, CT, NT, sigmaw, sigmaz = build_system_matrices(t)
-
-    if U_fixed is None:
-        U_full = rng.standard_normal((m*t, N_max))
-    else:
-        U_full = U_fixed
-        N_max = U_full.shape[1]
-
-    all_xT_full = np.zeros((n, N_max, M_max))
-
-    for i in range(N_max):
-        for j in range(M_max):
-            x_0 = rng.multivariate_normal(np.zeros(n), np.eye(n) * (0.2)**2)
-            w = rng.multivariate_normal(np.zeros(n*t), sigmaw)
-            all_xT_full[:, i, j] = np.linalg.matrix_power(A, t) @ x_0 + CT @ U_full[:, i] + NT @ w
-
-    return U_full, all_xT_full, CT, sigmaz
+# Miscoverage values for coverage plot
+delta_list = [
+    0.30,
+    0.20,
+    0.10,
+    0.05,
+    0.01,
+]
 
 
-def estimates_from_nested_data(t, U_full, all_xT_full, N, M):
-   
-    A, B, CT, NT, sigmaw, sigmaz = build_system_matrices(t)
+# ============================================================
+# PARAMETER SWEEPS
+# ============================================================
 
-    U = U_full[:, :N]
-    all_xT = all_xT_full[:, :N, :M]
+# Only three T values for nominal-vs-empirical coverage
+T_list_cov = [
+    2,
+    6,
+    10,
+]
 
-    X_bar = np.mean(all_xT, axis=2)
+# q vs T
+T_list = list(
+    range(1, 20, 2)
+)
 
-    CT_hat = X_bar @ U.T @ np.linalg.pinv(U @ U.T)
+# q vs n
+n_list = [
+    2,
+    4,
+    6,
+    8,
+    10,
+    12,
+    16,
+    20,
+]
 
-    sample_sigma = np.zeros((n, n))
-    struct_sigma = np.zeros((n, n))
+# q vs sigma_0
+sigma0_list = np.linspace(
+    0.0,
+    0.5,
+    11,
+)
 
-    for i in range(N):
-        for j in range(M):
-            diff_sample = all_xT[:, i, j] - X_bar[:, i]
-            diff_struct = all_xT[:, i, j] - CT_hat @ U[:, i]
-            sample_sigma += np.outer(diff_sample, diff_sample)
-            struct_sigma += np.outer(diff_struct, diff_struct)
-
-    sample_sigma /= (N * M)
-    struct_sigma /= (N * M)
-
-    mu_true = CT @ U
-    mu_sample = X_bar
-    mu_struct = CT_hat @ U
-
-    return mu_sample, mu_struct, sample_sigma, struct_sigma, mu_true, sigmaz, CT_hat, CT
+# q vs sigma
+sigma_list = np.linspace(
+    0.0,
+    0.5,
+    11,
+)
 
 
-def estimate_errors_from_nested_data(t, U_full, all_xT_full, N, M):
-    mu_sample, mu_struct, sample_sigma, struct_sigma, mu_true, sigmaz, CT_hat, CT = estimates_from_nested_data(
-        t, U_full, all_xT_full, N, M
+# ============================================================
+# RANDOM SEED
+# ============================================================
+
+BASE_SEED = 1000
+
+
+# ============================================================
+# OUTPUT DIRECTORY
+# ============================================================
+
+OUTDIR = "ieee_conformal_plots"
+
+os.makedirs(
+    OUTDIR,
+    exist_ok=True,
+)
+
+
+# ============================================================
+# CONFORMAL QUANTILE
+# ============================================================
+
+def conformal_quantile(
+    scores,
+    delta,
+):
+    """
+    Finite-sample split-conformal quantile
+
+        q_{1-delta}
+
+    with
+
+        k = ceil((N_cal + 1)(1-delta)).
+    """
+
+    N_cal_local = len(scores)
+
+    k = int(
+        np.ceil(
+            (N_cal_local + 1)
+            *
+            (1 - delta)
+        )
     )
 
-    mu_sample_error = np.linalg.norm(mu_sample - mu_true, ord=2)
-    mu_struct_error = np.linalg.norm(mu_struct - mu_true, ord=2)
-    sigma_sample_error = np.linalg.norm(sample_sigma - sigmaz, ord=2)
-    sigma_struct_error = np.linalg.norm(struct_sigma - sigmaz, ord=2)
-    CT_error = np.linalg.norm(CT_hat - CT, ord=2)
+    k = min(
+        k,
+        N_cal_local,
+    )
 
-    return mu_sample_error, mu_struct_error, sigma_sample_error, sigma_struct_error, CT_error
+    return np.sort(scores)[
+        k - 1
+    ]
 
 
-def average_errors_nested(t, N_list=None, M_list=None, N_fixed=None, M_fixed=None, K=30, seed=100):
+# ============================================================
+# BUILD SYSTEM MATRICES
+# ============================================================
 
-    if M_list is not None:
-        N_max = N_fixed
-        M_max = max(M_list)
-        keys = list(M_list)
-    else:
-        N_max = max(N_list)
-        M_max = M_fixed
-        keys = list(N_list)
+def build_system(
+    n,
+    m,
+    T,
+):
+    """
+    Build A, B, C_T and N_T such that
 
-    mu_samp = {key: [] for key in keys}
-    mu_struct = {key: [] for key in keys}
-    sig_samp = {key: [] for key in keys}
-    sig_struct = {key: [] for key in keys}
-    CT_err = {key: [] for key in keys}
+        x_T = A^T x_0 + C_T u + N_T w.
+    """
 
-    for k in range(K):
-        U_full, all_xT_full, CT, sigmaz = generate_nested_data(
-            t, N_max, M_max, seed=seed + k
-        )
+    A, B, CT = get_system(
+        name,
+        n,
+        m,
+        T,
+        seed=0,
+    )
 
-        for key in keys:
-            if M_list is not None:
-                N = N_fixed
-                M = key
-            else:
-                N = key
-                M = M_fixed
+    NT = np.eye(n)
 
-            e1, e2, e3, e4, e5 = estimate_errors_from_nested_data(
-                t, U_full, all_xT_full, N, M
-            )
+    for k in range(1, T):
 
-            mu_samp[key].append(e1)
-            mu_struct[key].append(e2)
-            sig_samp[key].append(e3)
-            sig_struct[key].append(e4)
-            CT_err[key].append(e5)
+        NT = np.hstack((
+            NT,
+            np.linalg.matrix_power(
+                A,
+                k,
+            ),
+        ))
 
     return (
-        [np.mean(mu_samp[key]) for key in keys],
-        [np.mean(mu_struct[key]) for key in keys],
-        [np.mean(sig_samp[key]) for key in keys],
-        [np.mean(sig_struct[key]) for key in keys],
-        [np.mean(CT_err[key]) for key in keys]
+        A,
+        B,
+        CT,
+        NT,
     )
 
 
-def compute_bias_variance_from_replicates(estimates, true_value):
+# ============================================================
+# STRUCTURE-BASED ESTIMATE OF C_T
+# ============================================================
+
+def estimate_CT(
+    n,
+    m,
+    T,
+    sigma0_std,
+    sigma_std,
+    M,
+    rng,
+):
     """
-    Bias = || average estimator - true value ||_F
-    Variance = average || estimator - average estimator ||_F^2
+    Structure-based estimator
+
+        C_T_hat
+        =
+        X_bar U^T (U U^T)^dagger.
+
+    where
+
+        x_0 ~ N(0, sigma_0^2 I),
+
+        w ~ N(0, sigma^2 I).
     """
-    estimates = np.array(estimates)
-    mean_estimate = np.mean(estimates, axis=0)
 
-    bias = np.linalg.norm(mean_estimate - true_value, ord='fro')
-    variance = np.mean([
-        np.linalg.norm(est - mean_estimate, ord='fro')**2
-        for est in estimates
-    ])
+    (
+        A,
+        _,
+        CT,
+        NT,
+    ) = build_system(
+        n,
+        m,
+        T,
+    )
 
-    return bias, variance
+    # --------------------------------------------------------
+    # Number of training inputs
+    # --------------------------------------------------------
+
+    N = m * T + 10
 
 
-def average_bias_variance_nested(t, N_list=None, M_list=None, N_fixed=None, M_fixed=None, K=30, seed=500):
-    """
-    Computes bias and variance over K independent datasets using nested slicing.
-    """
-    if M_list is not None:
-        N_max = N_fixed
-        M_max = max(M_list)
-        keys = list(M_list)
-    else:
-        N_max = max(N_list)
-        M_max = M_fixed
-        keys = list(N_list)
+    # --------------------------------------------------------
+    # Input matrix
+    # --------------------------------------------------------
 
-    mu_s_bias, mu_st_bias = [], []
-    mu_s_var, mu_st_var = [], []
-    sig_s_bias, sig_st_bias = [], []
-    sig_s_var, sig_st_var = [], []
+    U = rng.standard_normal(
+        (m * T, N)
+    )
 
-    for key in keys:
-        mu_sample_list = []
-        mu_struct_list = []
-        sigma_sample_list = []
-        sigma_struct_list = []
 
-        for k in range(K):
-            U_full, all_xT_full, CT, sigmaz = generate_nested_data(
-                t, N_max, M_max, seed=seed + k
-            )
+    # --------------------------------------------------------
+    # Initial-state samples
+    #
+    # Shape:
+    #     N x M x n
+    # --------------------------------------------------------
 
-            if M_list is not None:
-                N = N_fixed
-                M = key
-            else:
-                N = key
-                M = M_fixed
+    x0 = (
+        sigma0_std
+        *
+        rng.standard_normal(
+            (N, M, n)
+        )
+    )
 
-            mu_sample, mu_struct, sample_sigma, struct_sigma, mu_true, sig_true, CT_hat, CT_true = estimates_from_nested_data(
-                t, U_full, all_xT_full, N, M
-            )
 
-            mu_sample_list.append(mu_sample)
-            mu_struct_list.append(mu_struct)
-            sigma_sample_list.append(sample_sigma)
-            sigma_struct_list.append(struct_sigma)
+    # --------------------------------------------------------
+    # Process-noise samples
+    #
+    # Shape:
+    #     N x M x nT
+    # --------------------------------------------------------
 
-        b1, v1 = compute_bias_variance_from_replicates(mu_sample_list, mu_true)
-        b2, v2 = compute_bias_variance_from_replicates(mu_struct_list, mu_true)
-        b3, v3 = compute_bias_variance_from_replicates(sigma_sample_list, sig_true)
-        b4, v4 = compute_bias_variance_from_replicates(sigma_struct_list, sig_true)
+    w = (
+        sigma_std
+        *
+        rng.standard_normal(
+            (N, M, n * T)
+        )
+    )
 
-        mu_s_bias.append(b1)
-        mu_st_bias.append(b2)
-        mu_s_var.append(v1)
-        mu_st_var.append(v2)
 
-        sig_s_bias.append(b3)
-        sig_st_bias.append(b4)
-        sig_s_var.append(v3)
-        sig_st_var.append(v4)
+    AT = np.linalg.matrix_power(
+        A,
+        T,
+    )
+
+
+    # --------------------------------------------------------
+    # A^T x_0
+    # --------------------------------------------------------
+
+    x0_term = np.einsum(
+        "ab,ijb->ija",
+        AT,
+        x0,
+    )
+
+
+    # --------------------------------------------------------
+    # N_T w
+    # --------------------------------------------------------
+
+    w_term = np.einsum(
+        "ab,ijb->ija",
+        NT,
+        w,
+    )
+
+
+    # --------------------------------------------------------
+    # C_T u
+    #
+    # Shape:
+    #     N x 1 x n
+    # --------------------------------------------------------
+
+    control_term = (
+        CT @ U
+    ).T[:, None, :]
+
+
+    # --------------------------------------------------------
+    # Terminal-state samples
+    # --------------------------------------------------------
+
+    xT = (
+        x0_term
+        +
+        control_term
+        +
+        w_term
+    )
+
+
+    # --------------------------------------------------------
+    # Mean terminal state for each training input
+    #
+    # X_bar in R^{n x N}
+    # --------------------------------------------------------
+
+    X_bar = np.mean(
+        xT,
+        axis=1,
+    ).T
+
+
+    # --------------------------------------------------------
+    # Structure-based estimator
+    # --------------------------------------------------------
+
+    CT_hat = (
+        X_bar
+        @ U.T
+        @ np.linalg.pinv(
+            U @ U.T
+        )
+    )
+
 
     return (
-        mu_s_bias, mu_st_bias, mu_s_var, mu_st_var,
-        sig_s_bias, sig_st_bias, sig_s_var, sig_st_var
+        A,
+        CT,
+        NT,
+        CT_hat,
     )
 
-def conformal_quantile(scores, delta):
-    N_cal = len(scores)
 
-    k = int(np.ceil((N_cal + 1) * (1 - delta)))
-    k = min(k, N_cal)
+# ============================================================
+# CALIBRATION SCORES
+# ============================================================
 
-    q = np.sort(scores)[k - 1]
-
-    return q
-
-
-def get_scores(U_cal, N_cal, CT_hat, A, NT, CT, t, sigma, sigma1, w_cal_train, x_cal_train):
-    scores = []
-    for i in range(N_cal):
-        w =  sigma1 * w_cal_train[i]
-        x_0 = sigma * x_cal_train[i]
-        # x_0 = np.random.multivariate_normal(np.zeros(n), sigma_0)
-        x_true = np.linalg.matrix_power(A, t) @ x_0+ CT @ U_cal[:, i] + NT@w
-        x_cal = CT_hat @ U_cal[:, i]
-        scores.append(np.linalg.norm(x_true - x_cal))
-
-    return(np.array(scores))
-
-
-def get_test_scores(U_test, CT_hat, A,  NT, CT, t, sigma, sigma1):
-
-    scores = []
-
-    for i in range(U_test.shape[1]):
-
-        w = np.random.multivariate_normal(
-            np.zeros(n*t),
-            np.eye(n*t) * sigma1**2
-        )
-        x_0 = np.random.multivariate_normal(
-            np.zeros(n),
-            np.eye(n)*sigma**2
-        )
-
-        x_true = np.linalg.matrix_power(A, t) @x_0 + CT @ U_test[:, i] + NT @ w
-        x_pred = CT_hat @ U_test[:, i]
-
-        score = np.linalg.norm(x_true - x_pred)
-
-        scores.append(score)
-
-    return np.array(scores)
-
-def find_lambda_star(n, epsilon, delta):
+def calibration_scores(
+    A,
+    CT,
+    NT,
+    CT_hat,
+    n,
+    m,
+    T,
+    sigma0_std,
+    sigma_std,
+    N_cal,
+    rng,
+):
     """
-    Solves F_{chi^2_n(lambda)}(epsilon^2) = delta
-    for lambda >= 0.
-    
-    Parameters:
-    n       : degrees of freedom
-    epsilon : radius (so we evaluate CDF at epsilon^2)
-    delta   : probability level
-    
-    Returns:
-    lambda_star
+    Calibration scores
+
+        S_i
+        =
+        ||x_T^(i) - C_T_hat u_i||_2.
     """
-    
-    x = epsilon**2
 
-    # Define equation to solve
-    def equation(lam):
-        return ncx2.cdf(x, df=n, nc=lam) - delta
+    U_cal = rng.standard_normal(
+        (m * T, N_cal)
+    )
 
-    # We search in a reasonable interval for lambda
-    # Lower bound = 0
-    # Upper bound chosen large enough
-    lam_lower = 0.0
-    lam_upper = 1e11
+    x0 = (
+        sigma0_std
+        *
+        rng.standard_normal(
+            (N_cal, n)
+        )
+    )
 
-    # Ensure bracket contains root
-    if equation(lam_lower) * equation(lam_upper) > 0:
-        raise ValueError("Root not bracketed. Increase lam_upper.")
+    w = (
+        sigma_std
+        *
+        rng.standard_normal(
+            (N_cal, n * T)
+        )
+    )
 
-    lambda_star = brentq(equation, lam_lower, lam_upper)
-    
-    return lambda_star
+    AT = np.linalg.matrix_power(
+        A,
+        T,
+    )
 
-#end of all function definitons--------
 
-for t in T_list:
-    sample_cost_runs = []
-    struct_cost_runs = []
-    cp_cost_runs = []
-    abs_cost_runs = []
-    known_cost_runs = []
+    # Model-estimation error
+    model_error = (
+        (CT - CT_hat)
+        @ U_cal
+    ).T
 
-    sample_dev_runs = []
-    struct_dev_runs = []
-    cp_dev_runs = []
-    known_dev_runs = []
-    abs_dev_runs = []
 
-    ratio1_runs = []
-    ratio2_runs = []
-    ratio3_runs = []
-    ratiok_runs = []
-    ratioabs_runs = []
-    quant_runs = []
-    A, B, CT = get_system(name, n, m, t, seed=0)
-    print(t)
-    Q_tilde = block_diag(*([Q] * t))
-    sigma = 0.3**2 * np.eye(n)
-    It = np.eye(t)
-    sigmaw = np.kron(It, sigma)
-    NT = np.eye(n)
-    for i in range(1, t):
-        NT = np.hstack((NT, np.linalg.matrix_power(A, i)))
-    # sigmaw = np.eye(n*t) * sigma_2**2
-    sigmaz = NT @ sigmaw @ NT.T + np.linalg.matrix_power(A, t) @ sigma_0 @ np.linalg.matrix_power(A, t).T
+    # Initial-state contribution
+    x0_error = (
+        x0
+        @ AT.T
+    )
 
-    #estimation
-    N = m*t +10
-    N_cal = 60
-    for dataset in range(k_est):
-        np.random.seed(dataset)
-        U = np.random.randn(m*t, N) # input matrix
-        U_cal = np.random.randn(m*t, N_cal)
-        w_cal_train = np.random.multivariate_normal(
-        np.zeros(n*t),
-        np.eye(n*t),
-        size=N_cal
+
+    # Process-noise contribution
+    w_error = (
+        w
+        @ NT.T
+    )
+
+
+    error = (
+        model_error
+        +
+        x0_error
+        +
+        w_error
+    )
+
+
+    return np.linalg.norm(
+        error,
+        axis=1,
+    )
+
+
+# ============================================================
+# TEST SCORES
+# ============================================================
+
+def test_scores(
+    A,
+    CT,
+    NT,
+    CT_hat,
+    n,
+    m,
+    T,
+    sigma0_std,
+    sigma_std,
+    N_test,
+    rng,
+):
+    """
+    Independent scores for empirical coverage.
+    """
+
+    U_test = rng.standard_normal(
+        (m * T, N_test)
+    )
+
+    x0 = (
+        sigma0_std
+        *
+        rng.standard_normal(
+            (N_test, n)
+        )
+    )
+
+    w = (
+        sigma_std
+        *
+        rng.standard_normal(
+            (N_test, n * T)
+        )
+    )
+
+    AT = np.linalg.matrix_power(
+        A,
+        T,
+    )
+
+
+    model_error = (
+        (CT - CT_hat)
+        @ U_test
+    ).T
+
+
+    x0_error = (
+        x0
+        @ AT.T
+    )
+
+
+    w_error = (
+        w
+        @ NT.T
+    )
+
+
+    error = (
+        model_error
+        +
+        x0_error
+        +
+        w_error
+    )
+
+
+    return np.linalg.norm(
+        error,
+        axis=1,
+    )
+
+
+# ============================================================
+# COMPUTE q FOR ONE INDEPENDENT DATASET
+# ============================================================
+
+def compute_q_once(
+    n,
+    m,
+    T,
+    sigma0_std,
+    sigma_std,
+    delta,
+    seed,
+):
+    """
+    Estimate C_T and calculate q_{1-delta}.
+    """
+
+    rng = np.random.default_rng(
+        seed
+    )
+
+    (
+        A,
+        CT,
+        NT,
+        CT_hat,
+    ) = estimate_CT(
+        n=n,
+        m=m,
+        T=T,
+        sigma0_std=sigma0_std,
+        sigma_std=sigma_std,
+        M=M,
+        rng=rng,
+    )
+
+
+    scores = calibration_scores(
+        A=A,
+        CT=CT,
+        NT=NT,
+        CT_hat=CT_hat,
+        n=n,
+        m=m,
+        T=T,
+        sigma0_std=sigma0_std,
+        sigma_std=sigma_std,
+        N_cal=N_cal,
+        rng=rng,
+    )
+
+
+    return conformal_quantile(
+        scores,
+        delta,
+    )
+
+
+# ============================================================
+# AVERAGE q OVER INDEPENDENT DATASETS
+#
+# Used for q vs T and q vs n.
+# ============================================================
+
+def average_q(
+    n,
+    m,
+    T,
+    sigma0_std,
+    sigma_std,
+    delta,
+    num_runs,
+):
+    q_runs = []
+
+
+    for run in range(num_runs):
+
+        q = compute_q_once(
+            n=n,
+            m=m,
+            T=T,
+            sigma0_std=sigma0_std,
+            sigma_std=sigma_std,
+            delta=delta,
+            seed=BASE_SEED + run,
         )
 
-        x_cal_train = np.random.multivariate_normal(
-        np.zeros(n),
-        np.eye(n),
-        size=N_cal
-        )
-        #create bar{X}
-        X_bar = np.zeros((n, N))
-        all_xT = np.zeros((n, N, M))
-        for i in range(N):
-            sumx = np.zeros(n)
-            for j in range(M):
-                x_0 =  np.random.multivariate_normal(np.zeros(n), sigma_0)
-                w = np.random.multivariate_normal(np.zeros(n*t), sigmaw)
-                xT = np.linalg.matrix_power(A, t) @ x_0 + CT @ U[:,i] + NT@ w
-                all_xT[:, i, j] = xT
-                sumx = sumx + xT
-            x_bar = sumx/M     
-            X_bar[:, i] = x_bar
-        
-        CT_hat = X_bar @ U.T @ np.linalg.pinv(U @ U.T)
-        sample_sigma = np.zeros((n, n))
-        struct_sigma = np.zeros((n, n))
-        
-        for i in range(N):
-            for j in range(M):
-                diff = all_xT[:, i, j] - X_bar[:, i]
-                diff1 = all_xT[:, i, j] - CT_hat @ U[:, i]
-                sample_sigma += np.outer(diff, diff)
-                struct_sigma += np.outer(diff1, diff1)
+        q_runs.append(q)
 
-        sample_sigma = sample_sigma / (N*M)
-        struct_sigma = struct_sigma/ (N*M)
-        
-        quantiles[t] = []
-        empirical_coverage[t] = {}
+
+    return (
+        np.mean(q_runs),
+        np.std(q_runs),
+    )
+
+
+# ============================================================
+# A. NOMINAL VS EMPIRICAL COVERAGE
+# ============================================================
+
+coverage_results = {
+
+    T: {
+        delta: []
+        for delta in delta_list
+    }
+
+    for T in T_list_cov
+}
+
+
+for T in T_list_cov:
+
+    print(
+        f"Coverage: T={T}"
+    )
+
+
+    for run in range(num_runs):
+
+        rng = np.random.default_rng(
+            BASE_SEED
+            + 10000 * T
+            + run
+        )
+
+
+        (
+            A,
+            CT,
+            NT,
+            CT_hat,
+        ) = estimate_CT(
+            n=n_default,
+            m=m,
+            T=T,
+            sigma0_std=sigma0_default,
+            sigma_std=sigma_default,
+            M=M,
+            rng=rng,
+        )
+
+
+        # ----------------------------------------------------
+        # Calibration set
+        # ----------------------------------------------------
+
+        scores_cal = calibration_scores(
+            A=A,
+            CT=CT,
+            NT=NT,
+            CT_hat=CT_hat,
+            n=n_default,
+            m=m,
+            T=T,
+            sigma0_std=sigma0_default,
+            sigma_std=sigma_default,
+            N_cal=N_cal,
+            rng=rng,
+        )
+
+
+        # ----------------------------------------------------
+        # Independent test set
+        # ----------------------------------------------------
+
+        scores_test = test_scores(
+            A=A,
+            CT=CT,
+            NT=NT,
+            CT_hat=CT_hat,
+            n=n_default,
+            m=m,
+            T=T,
+            sigma0_std=sigma0_default,
+            sigma_std=sigma_default,
+            N_test=N_test,
+            rng=rng,
+        )
+
 
         for delta in delta_list:
 
-            coverages = []
-            q_runs = []
+            q = conformal_quantile(
+                scores_cal,
+                delta,
+            )
 
-            for run in range(num_runs):
 
-                np.random.seed(run)
+            coverage = np.mean(
+                scores_test <= q
+            )
 
-                scores = get_scores(
-                    U_cal,
-                    N_cal,
-                    CT_hat,
-                    A,
-                    NT,
-                    CT,
-                    t,
-                    sigma_1,
-                    sigma_2,
-                    w_cal_train,
-                    x_cal_train
-                )
 
-                q = conformal_quantile(scores, delta)
-                quant_runs.append(q)
-                q_runs.append(q)
+            coverage_results[
+                T
+            ][
+                delta
+            ].append(
+                coverage
+            )
 
-                U_test = np.random.randn(m*t, N_test)
 
-                scores_test = get_test_scores(
-                    U_test,
-                    CT_hat,
-                    A,
-                    NT,
-                    CT,
-                    t,
-                    sigma_1,
-                    sigma_2,
-                )
+# Nominal coverage
+nominal = np.asarray([
+    1.0 - delta
+    for delta in delta_list
+])
 
-                coverages.append(
-                    np.mean(scores_test <= q)
-                )
 
-            empirical_coverage[t][delta] = (
-                np.mean(coverages),
-                np.std(coverages)
-        )
+# ============================================================
+# COVERAGE FIGURE
+# ============================================================
 
-            # if delta == 0.30:
-            #     quant.append(np.mean(q_runs))
-
-            quantiles[t].append(np.mean(q_runs))
-
-        delta = 0.50
-
-        scores = get_scores(
-            U_cal,
-            N_cal,
-            CT_hat,
-            A,
-            NT,
-            CT,
-            t,
-            sigma_1,
-            sigma_2,
-            w_cal_train,
-            x_cal_train
-        )
-
-        q = conformal_quantile(scores, delta)
-
-        #rhs of all inequalities
-        lambda_star = find_lambda_star(n, epsilon, 1-delta)
-        lambda_cp = (epsilon - q)**2    
-
-        alpha1 = cp.Variable(N)
-        alpha2 = cp.Variable(m*t)
-        alphak = cp.Variable(m*t)
-        u = cp.Variable(m*t)
-        u4 = cp.Variable(m*t)
-        objective1 = cp.Minimize(cp.quad_form((U @ alpha1), Q_tilde))
-        objective2 = cp.Minimize(cp.quad_form((alpha2), Q_tilde))
-        objectivek = cp.Minimize(cp.quad_form((alphak), Q_tilde))
-        objective3 = cp.Minimize(cp.quad_form(u, Q_tilde))
-        objective4 = cp.Minimize(cp.quad_form(u4, Q_tilde))
-
-        f1 = cp.quad_form(X_bar @ alpha1 - xf, np.linalg.inv(sample_sigma))
-        f2 = cp.quad_form(CT_hat @ alpha2 - xf, np.linalg.inv(struct_sigma))
-        fk = cp.quad_form(CT @ alphak - xf, np.linalg.inv(sigmaz))
-        f3 = cp.quad_form(CT_hat @ u - xf, np.eye(n))
-        f4 = cp.quad_form(CT @ u4 - xf, np.eye(n))
-
-        prob1 = cp.Problem(objective1, [f1 <= lambda_star])
-        prob2 = cp.Problem(objective2, [f2 <= lambda_star])
-        probk = cp.Problem(objectivek, [fk <= lambda_star])
-        prob3 = cp.Problem(objective3, [f3 <= lambda_cp])
-        prob4 = cp.Problem(objective4, [f4 <= lambda_star])
-
-        prob1.solve(solver = cp.SCS, verbose = False)
-        prob2.solve(solver = cp.SCS, verbose = False)
-        probk.solve(solver = cp.SCS, verbose = False)
-        prob3.solve(solver = cp.SCS, verbose = False)
-        prob4.solve(solver = cp.SCS, verbose = False)
-
-        a1 = alpha1.value
-        a2 = alpha2.value
-        ak = alphak.value
-        u3 = u.value
-        u4 = u4.value
-
-        u1 = U @ a1
-        u2 = a2
-        uk = ak
-        u4 = u4
-        
-        if a1 is None:
-            print(f"1st Convex solver failed at T={t}")
-            continue
-
-        if a2 is None:
-            print(f"2nd Convex solver failed at T={t}")
-            continue
-
-        if ak is None:
-            print(f"original Convex solver failed at T={t}")
-            continue
-
-        if u3 is None:
-            print(f"cp Convex solver failed at T={t}")
-            continue
-        if u4 is None:
-            print(f"cp Convex solver failed at T={t}")
-            continue
-
-        np.random.seed(0)
-
-        x1 = []
-        x2 = []
-        xk = []
-        x3 = []
-        x4 = []
-        
-        for j in range(0, 5000):
-            x_0 =  np.random.multivariate_normal(np.zeros(n), sigma_0)
-            w = np.random.multivariate_normal(np.zeros(n*t), sigmaw)
-            x1T = np.linalg.matrix_power(A, t) @ x_0 + CT @ u1 + NT@w
-            x2T =  np.linalg.matrix_power(A, t) @ x_0+ CT_hat @ u2 + NT @ w  
-            xkT = np.linalg.matrix_power(A, t) @ x_0+ CT @ uk + NT @ w  
-            x3T = np.linalg.matrix_power(A, t) @ x_0+ CT_hat @ u3 + NT @ w
-            x4T = np.linalg.matrix_power(A, t) @ x_0 + CT @ u4 + NT @ w
-        
-            x1.append(X_bar @ a1-xf)
-            x2.append(x2T-xf)
-            xk.append(xkT-xf)
-            x3.append(x3T-xf)
-            x4.append(x4T -xf)
-
-        count1 = np.mean(x1, axis = 0).T @ np.linalg.inv(sample_sigma) @ np.mean(x1, axis = 0)  
-        count2 =  np.mean(x2, axis = 0).T @ np.linalg.inv(struct_sigma) @ np.mean(x2, axis = 0)
-        countk = np.mean(xk, axis = 0).T @  np.linalg.inv(sigmaz) @ np.mean(xk, axis = 0) 
-        count3 = np.mean(x3, axis = 0).T @ np.mean(x3, axis = 0)
-
-        ratio1_runs.append(count1)
-        ratio2_runs.append(count2)
-        ratiok_runs.append(countk)
-        ratio3_runs.append(count3)
-
-        sample_dev_runs.append(
-            np.mean(x1, axis=0).T @ np.linalg.pinv(sigmaz) @ np.mean(x1, axis=0)
-        )
-
-        struct_dev_runs.append(
-            np.mean(x2, axis=0).T @ np.linalg.pinv(sigmaz) @ np.mean(x2, axis=0)
-        )
-
-        known_dev_runs.append(
-            np.mean(xk, axis=0).T @ np.linalg.pinv(sigmaz) @ np.mean(xk, axis=0)
-        )
-
-        cp_dev_runs.append(
-            np.mean(x3, axis=0).T @ np.mean(x3, axis=0)
-        )
-        abs_dev_runs.append(np.mean(x4, axis = 0).T @ np.mean(x4, axis = 0))
-
-        u1 = u1.reshape(-1, 1)
-        u2 = u2.reshape(-1, 1)
-        uk = uk.reshape(-1, 1)
-        u3 = u3.reshape(-1, 1)
-        u4 = u4.reshape(-1, 1)
-
-        sample_cost_runs.append(float(u1.T @ Q_tilde @ u1))
-        struct_cost_runs.append(float(u2.T @ Q_tilde @ u2))
-        known_cost_runs.append(float(uk.T @ Q_tilde @ uk))
-        cp_cost_runs.append(float(u3.T @ Q_tilde @ u3))
-        abs_cost_runs.append(float(u4.T @ Q_tilde @ u4))
-    quant.append(np.mean(quant_runs))
-    sampleu.append(np.mean(sample_cost_runs))
-    structu.append(np.mean(struct_cost_runs))
-    originalu.append(np.mean(known_cost_runs))
-    cpu.append(np.mean(cp_cost_runs))
-    originalabsu.append(np.mean(abs_cost_runs))
-
-    x1_dev.append(np.mean(sample_dev_runs))
-    x2_dev.append(np.mean(struct_dev_runs))
-    xk_dev.append(np.mean(known_dev_runs))
-    x3_dev.append(np.mean(cp_dev_runs))
-    xabs_dev.append(np.mean(abs_dev_runs))
- 
-plt.figure(figsize = (10, 6))
-# plt.semilogy(T_list, x1_dev, 'o-', label = 'sample based MLE')
-plt.semilogy(T_list, x2_dev, 'o-', label = 'structure MLE')
-plt.semilogy(T_list, xk_dev, '--', color = 'black', label = 'normalized known')
-plt.semilogy(T_list, x3_dev, 'o-', label = 'conformal')
-plt.semilogy(T_list, xabs_dev, 'o--', color = 'red', label = 'absolute known')
-plt.xlabel('T')
-plt.ylabel('mean deviation')
-plt.legend()
-plt.grid(True)
-plt.xticks(T_list)
-plt.savefig('dev_{}_{}_{}_{}.jpeg'.format(epsilon, delta, M, name))
-
-plt.figure(figsize = (10, 6))
-# plt.semilogy(T_list, sampleu, 'o-', label = 'sample based MLE')
-plt.semilogy(T_list, structu, 'o-', label = 'structure MLE')
-plt.semilogy(T_list, originalu, '--', color = 'black', label = 'normalized known')
-plt.semilogy(T_list, cpu, 'o-', label = 'conformal')
-plt.semilogy(T_list, originalabsu, '--', color = 'red', label = 'absolute known')
-plt.xlabel('T')
-plt.ylabel('optimal cost')
-plt.legend()
-plt.grid(True)
-plt.xticks(T_list)
-plt.savefig('norm_{}_{}_{}_{}.jpeg'.format(epsilon, delta, M, name))
-
-lambda_star = find_lambda_star(n, epsilon, 1-delta)
-lambda_cp = (epsilon - q)**2  
-print(lambda_star)
-print(lambda_cp)
-plt.figure(figsize=(10,6))
-
-nominal = [1-d for d in delta_list]
-T_list = range(1, 20, 2)
-T_list_cov = range(1, 20, 2)
-
-for t in T_list_cov:
-    cover = [
-        empirical_coverage[t][d][0]
-        for d in delta_list
-    ]
-    plt.plot(
-        nominal,
-        cover,
-        marker='o',
-        label=f"T={t}"
-    )
-
-plt.plot([0.75,1],[0.75,1],'k--',label='Ideal')
-
-plt.xlabel("Nominal Coverage")
-
-plt.ylabel("Empirical Coverage")
-
-plt.grid(True)
-
-plt.legend()
-
-plt.savefig("coverage_vs_nominal.jpeg")
-
-plt.figure(figsize=(10,6))
-
-plt.plot(
-    T_list,
-    quant,
-    marker='o',
-    linewidth=2
+fig, ax = plt.subplots(
+    figsize=(3.48, 2.05),
 )
 
-plt.xlabel("T")
 
-plt.ylabel(r"$q_{1-\delta}$")
+fig.subplots_adjust(
+    left=0.16,
+    right=0.98,
+    bottom=0.22,
+    top=0.78,
+)
 
-plt.grid(True)
 
-plt.savefig("quantile_vs_T.jpeg")
+coverage_colors = {
+    2: "C0",
+    6: "C1",
+    10: "C2",
+}
 
-#q vs n
-# -----------------------------
-# Parameters
-# -----------------------------
-T = 8
-m = 4
-N = m*T + 10
-N_cal = 100
-M = 100
 
-sigma_1 = 0.2
-sigma_2 = 0.3
-delta = 0.3       # Fixed miscoverage level
+for T in T_list_cov:
 
-n_list = [2,4,6,8,10,12,16,20]
+    empirical = np.asarray([
 
-q_values = []
+        np.mean(
+            coverage_results[T][delta]
+        )
 
-for n in n_list:
+        for delta in delta_list
+    ])
 
-    print(f"Running n = {n}")
 
-    # -----------------------------
-    # Build system
-    # -----------------------------
-    A, B, CT = get_system("stable", n, m, T, seed=0)
-    w_cal_train = np.random.multivariate_normal(np.zeros(n*T), 
-        np.kron(np.eye(T),np.eye(n)*sigma_2**2),
-        size=N_cal
+    ax.plot(
+        nominal,
+        empirical,
+        color=coverage_colors[T],
+        linestyle="-",
+        linewidth=0.70,
+        label=rf"$T={T}$",
     )
-    x_cal_train = np.random.multivariate_normal(
-        np.zeros(n),
-        np.eye(n),
-        size=N_cal
+
+
+# Ideal line
+ideal_x = np.linspace(
+    np.min(nominal),
+    1.0,
+    100,
+)
+
+
+ax.plot(
+    ideal_x,
+    ideal_x,
+    color="black",
+    linestyle=":",
+    linewidth=0.70,
+    label="Ideal",
+)
+
+
+style_ieee_axis(ax)
+
+
+ax.set_xlabel(
+    "Nominal coverage"
+)
+
+ax.set_ylabel(
+    "Empirical coverage"
+)
+
+
+ax.set_xlim(
+    np.min(nominal) - 0.01,
+    1.005,
+)
+
+ax.set_ylim(
+    np.min(nominal) - 0.03,
+    1.01,
+)
+
+
+set_compact_font_sizes(ax)
+
+
+# Legend above plot
+ax.legend(
+    loc="lower center",
+    bbox_to_anchor=(
+        0.5,
+        1.015,
+    ),
+    ncol=4,
+    frameon=False,
+    fontsize=4.7,
+    handlelength=1.7,
+    handletextpad=0.35,
+    columnspacing=0.8,
+    labelspacing=0.25,
+    borderaxespad=0.0,
+)
+
+
+coverage_stem = os.path.join(
+    OUTDIR,
+    "coverage_vs_nominal",
+)
+
+
+save_ieee_figure(
+    fig,
+    coverage_stem,
+)
+
+plt.show()
+
+
+# ============================================================
+# B. q_{1-delta} VS T
+# ============================================================
+
+q_T = []
+q_T_std = []
+
+
+for T in T_list:
+
+    print(
+        f"q vs T: T={T}"
     )
-    NT = np.eye(n)
-    for k in range(1, T):
-        NT = np.hstack((NT, np.linalg.matrix_power(A, k)))
-    # -----------------------------
-    # Generate training data
-    # -----------------------------
-    np.random.seed(0)
 
-    U = np.random.randn(m*T, N)
-    U_cal = np.random.randn(m*T, N_cal)
 
-    X_bar = np.zeros((n, N))
+    q_mean, q_std = average_q(
+        n=n_default,
+        m=m,
+        T=T,
+        sigma0_std=sigma0_default,
+        sigma_std=sigma_default,
+        delta=delta_q,
+        num_runs=num_runs,
+    )
 
-    for i in range(N):
 
-        x_avg = np.zeros(n)
+    q_T.append(
+        q_mean
+    )
 
-        for _ in range(M):
-            x_0 = np.random.multivariate_normal(
-            np.zeros(n),
-            sigma_1**2 * np.eye(n))
-            w = np.random.multivariate_normal(np.zeros(n*T), np.kron(np.eye(T),np.eye(n)*sigma_2**2))
+    q_T_std.append(
+        q_std
+    )
 
-            xT = np.linalg.matrix_power(A, T)@x_0 +  CT @ U[:, i] + NT @ w
-            x_avg += xT
 
-        X_bar[:, i] = x_avg / M
+q_T = np.asarray(
+    q_T
+)
 
-    # -----------------------------
-    # Estimate C_T
-    # -----------------------------
-    CT_hat = X_bar @ U.T @ np.linalg.pinv(U @ U.T)
+q_T_std = np.asarray(
+    q_T_std
+)
 
-    # -----------------------------
-    # Calibration scores
-    # -----------------------------
-    scores = get_scores(
-        U_cal,
-        N_cal,
-        CT_hat,
+
+# ============================================================
+# C. q_{1-delta} VS n
+# ============================================================
+
+q_n = []
+q_n_std = []
+
+
+for n_value in n_list:
+
+    print(
+        f"q vs n: n={n_value}"
+    )
+
+
+    q_mean, q_std = average_q(
+        n=n_value,
+        m=m,
+        T=T_default,
+        sigma0_std=sigma0_default,
+        sigma_std=sigma_default,
+        delta=delta_q,
+        num_runs=num_runs,
+    )
+
+
+    q_n.append(
+        q_mean
+    )
+
+    q_n_std.append(
+        q_std
+    )
+
+
+q_n = np.asarray(
+    q_n
+)
+
+q_n_std = np.asarray(
+    q_n_std
+)
+
+
+# ============================================================
+# D. CORRECTED q_{1-delta} VS sigma_0
+#
+# IMPORTANT:
+#
+# For each independent run:
+#
+# 1. Estimate C_T_hat ONCE at baseline uncertainty.
+# 2. Generate U_cal, x0_base and w_base ONCE.
+# 3. Keep everything fixed.
+# 4. Change ONLY sigma_0.
+#
+# Therefore this plot isolates the direct effect of sigma_0.
+# ============================================================
+
+q_sigma0_runs = {
+
+    sigma0_value: []
+
+    for sigma0_value in sigma0_list
+}
+
+
+for run in range(num_runs):
+
+    print(
+        "q vs sigma_0: "
+        f"run={run + 1}/{num_runs}"
+    )
+
+
+    rng = np.random.default_rng(
+        BASE_SEED + 20000 + run
+    )
+
+
+    # --------------------------------------------------------
+    # Estimate C_T_hat ONCE
+    # at the baseline uncertainty levels
+    # --------------------------------------------------------
+
+    (
         A,
-        NT,
         CT,
-        T,
-        sigma_1,
-        sigma_2,
-        w_cal_train,
-        x_cal_train
+        NT,
+        CT_hat,
+    ) = estimate_CT(
+        n=n_default,
+        m=m,
+        T=T_sensitivity,
+        sigma0_std=sigma0_default,
+        sigma_std=sigma_default,
+        M=M,
+        rng=rng,
     )
 
-    q = conformal_quantile(scores, delta)
-    q_values.append(q)
 
-# -----------------------------
-# Plot
-# -----------------------------
-plt.figure(figsize=(7,5))
-plt.plot(n_list, q_values, 'o-', linewidth=2)
-plt.xlabel(r"State dimension $n$", fontsize=13)
-plt.ylabel(r"$q_{1-\delta}$", fontsize=13)
-plt.grid(True)
-plt.tight_layout()
-plt.savefig('q_n.jpeg')
+    # --------------------------------------------------------
+    # Calibration quantities generated ONCE
+    # --------------------------------------------------------
+
+    U_cal = rng.standard_normal(
+        (
+            m * T_sensitivity,
+            N_cal,
+        )
+    )
+
+
+    # Standard normal base samples
+    x0_base = rng.standard_normal(
+        (
+            N_cal,
+            n_default,
+        )
+    )
+
+
+    w_base = rng.standard_normal(
+        (
+            N_cal,
+            n_default * T_sensitivity,
+        )
+    )
+
+
+    AT = np.linalg.matrix_power(
+        A,
+        T_sensitivity,
+    )
+
+
+    # --------------------------------------------------------
+    # Model error stays fixed
+    # --------------------------------------------------------
+
+    model_error = (
+        (CT - CT_hat)
+        @ U_cal
+    ).T
+
+
+    # --------------------------------------------------------
+    # Process-noise contribution stays fixed
+    # at sigma = sigma_default
+    # --------------------------------------------------------
+
+    process_error = (
+        sigma_default
+        *
+        (
+            w_base
+            @ NT.T
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # Sweep ONLY sigma_0
+    # --------------------------------------------------------
+
+    for sigma0_value in sigma0_list:
+
+
+        initial_error = (
+            sigma0_value
+            *
+            (
+                x0_base
+                @ AT.T
+            )
+        )
+
+
+        error = (
+            model_error
+            +
+            initial_error
+            +
+            process_error
+        )
+
+
+        scores = np.linalg.norm(
+            error,
+            axis=1,
+        )
+
+
+        q = conformal_quantile(
+            scores,
+            delta_q,
+        )
+
+
+        q_sigma0_runs[
+            sigma0_value
+        ].append(
+            q
+        )
+
+
+# ------------------------------------------------------------
+# Average over independent runs
+# ------------------------------------------------------------
+
+q_sigma0 = np.asarray([
+
+    np.mean(
+        q_sigma0_runs[
+            sigma0_value
+        ]
+    )
+
+    for sigma0_value in sigma0_list
+])
+
+
+q_sigma0_std = np.asarray([
+
+    np.std(
+        q_sigma0_runs[
+            sigma0_value
+        ]
+    )
+
+    for sigma0_value in sigma0_list
+])
+
+
+# ============================================================
+# E. CORRECTED q_{1-delta} VS sigma
+#
+# Same principle:
+#
+# 1. Estimate C_T_hat ONCE per run.
+# 2. Keep C_T_hat, U_cal, x0_base, w_base fixed.
+# 3. Keep sigma_0 fixed at baseline.
+# 4. Change ONLY sigma.
+# ============================================================
+
+q_sigma_runs = {
+
+    sigma_value: []
+
+    for sigma_value in sigma_list
+}
+
+
+for run in range(num_runs):
+
+    print(
+        "q vs sigma: "
+        f"run={run + 1}/{num_runs}"
+    )
+
+
+    rng = np.random.default_rng(
+        BASE_SEED + 30000 + run
+    )
+
+
+    # --------------------------------------------------------
+    # Estimate C_T_hat ONCE
+    # --------------------------------------------------------
+
+    (
+        A,
+        CT,
+        NT,
+        CT_hat,
+    ) = estimate_CT(
+        n=n_default,
+        m=m,
+        T=T_sensitivity,
+        sigma0_std=sigma0_default,
+        sigma_std=sigma_default,
+        M=M,
+        rng=rng,
+    )
+
+
+    # --------------------------------------------------------
+    # Generate calibration quantities ONCE
+    # --------------------------------------------------------
+
+    U_cal = rng.standard_normal(
+        (
+            m * T_sensitivity,
+            N_cal,
+        )
+    )
+
+
+    x0_base = rng.standard_normal(
+        (
+            N_cal,
+            n_default,
+        )
+    )
+
+
+    w_base = rng.standard_normal(
+        (
+            N_cal,
+            n_default * T_sensitivity,
+        )
+    )
+
+
+    AT = np.linalg.matrix_power(
+        A,
+        T_sensitivity,
+    )
+
+
+    # --------------------------------------------------------
+    # Model error stays fixed
+    # --------------------------------------------------------
+
+    model_error = (
+        (CT - CT_hat)
+        @ U_cal
+    ).T
+
+
+    # --------------------------------------------------------
+    # Initial-state contribution stays fixed
+    # at sigma_0 = sigma0_default
+    # --------------------------------------------------------
+
+    initial_error = (
+        sigma0_default
+        *
+        (
+            x0_base
+            @ AT.T
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # Sweep ONLY sigma
+    # --------------------------------------------------------
+
+    for sigma_value in sigma_list:
+
+
+        process_error = (
+            sigma_value
+            *
+            (
+                w_base
+                @ NT.T
+            )
+        )
+
+
+        error = (
+            model_error
+            +
+            initial_error
+            +
+            process_error
+        )
+
+
+        scores = np.linalg.norm(
+            error,
+            axis=1,
+        )
+
+
+        q = conformal_quantile(
+            scores,
+            delta_q,
+        )
+
+
+        q_sigma_runs[
+            sigma_value
+        ].append(
+            q
+        )
+
+
+# ------------------------------------------------------------
+# Average over independent runs
+# ------------------------------------------------------------
+
+q_sigma = np.asarray([
+
+    np.mean(
+        q_sigma_runs[
+            sigma_value
+        ]
+    )
+
+    for sigma_value in sigma_list
+])
+
+
+q_sigma_std = np.asarray([
+
+    np.std(
+        q_sigma_runs[
+            sigma_value
+        ]
+    )
+
+    for sigma_value in sigma_list
+])
+
+
+# ============================================================
+# F. COMBINED q_{1-delta} FIGURE
+#
+#               q vs T        q vs n
+#
+#               q vs sigma_0  q vs sigma
+#
+# Compact IEEE single-column width.
+# No markers.
+# ============================================================
+
+fig, ax = plt.subplots(
+    2,
+    2,
+    figsize=(3.48, 3.35),
+)
+
+
+fig.subplots_adjust(
+    left=0.15,
+    right=0.98,
+    bottom=0.12,
+    top=0.98,
+    wspace=0.44,
+    hspace=0.48,
+)
+
+
+# ============================================================
+# TOP LEFT
+# q_{1-delta} VS T
+# ============================================================
+
+ax[0, 0].plot(
+    T_list,
+    q_T,
+    color="C0",
+    linestyle="-",
+    linewidth=0.70,
+)
+
+
+ax[0, 0].set_xlabel(
+    r"$T$"
+)
+
+ax[0, 0].set_ylabel(
+    r"$q_{1-\delta}$"
+)
+
+
+# Fewer ticks to avoid crowding
+ax[0, 0].set_xticks(
+    [1, 5, 9, 13, 17]
+)
+
+
+# ============================================================
+# TOP RIGHT
+# q_{1-delta} VS n
+# ============================================================
+
+ax[0, 1].plot(
+    n_list,
+    q_n,
+    color="C0",
+    linestyle="-",
+    linewidth=0.70,
+)
+
+
+ax[0, 1].set_xlabel(
+    r"$n$"
+)
+
+ax[0, 1].set_ylabel(
+    r"$q_{1-\delta}$"
+)
+
+
+ax[0, 1].set_xticks(
+    [2, 6, 10, 16, 20]
+)
+
+
+# ============================================================
+# BOTTOM LEFT
+# q_{1-delta} VS sigma_0
+# ============================================================
+
+ax[1, 0].plot(
+    sigma0_list,
+    q_sigma0,
+    color="C0",
+    linestyle="-",
+    linewidth=0.70,
+)
+
+
+ax[1, 0].set_xlabel(
+    r"$\sigma_0$"
+)
+
+ax[1, 0].set_ylabel(
+    r"$q_{1-\delta}$"
+)
+
+
+ax[1, 0].set_xticks(
+    [0.0, 0.2, 0.4]
+)
+
+
+# ============================================================
+# BOTTOM RIGHT
+# q_{1-delta} VS sigma
+# ============================================================
+
+ax[1, 1].plot(
+    sigma_list,
+    q_sigma,
+    color="C0",
+    linestyle="-",
+    linewidth=0.70,
+)
+
+
+ax[1, 1].set_xlabel(
+    r"$\sigma$"
+)
+
+ax[1, 1].set_ylabel(
+    r"$q_{1-\delta}$"
+)
+
+
+ax[1, 1].set_xticks(
+    [0.0, 0.2, 0.4]
+)
+
+
+# ============================================================
+# COMMON AXIS FORMATTING
+# ============================================================
+
+for a in ax.flat:
+
+    style_ieee_axis(a)
+
+    set_compact_font_sizes(a)
+
+
+# Slightly adjust right-column y labels
+ax[0, 1].yaxis.set_label_coords(
+    -0.14,
+    0.5,
+)
+
+ax[1, 1].yaxis.set_label_coords(
+    -0.14,
+    0.5,
+)
+
+
+# ============================================================
+# SAVE COMBINED q FIGURE
+# ============================================================
+
+quantile_stem = os.path.join(
+    OUTDIR,
+    "conformal_quantiles",
+)
+
+
+save_ieee_figure(
+    fig,
+    quantile_stem,
+)
+
+plt.show()
+
+
+# ============================================================
+# PRINT NUMERICAL VALUES
+# ============================================================
+
+print(
+    "\n========================================"
+)
+
+print(
+    "q vs T"
+)
+
+print(
+    "========================================"
+)
+
+for T, q in zip(
+    T_list,
+    q_T,
+):
+
+    print(
+        f"T={T:2d}: q={q:.6f}"
+    )
+
+
+print(
+    "\n========================================"
+)
+
+print(
+    "q vs n"
+)
+
+print(
+    "========================================"
+)
+
+for n_value, q in zip(
+    n_list,
+    q_n,
+):
+
+    print(
+        f"n={n_value:2d}: q={q:.6f}"
+    )
+
+
+print(
+    "\n========================================"
+)
+
+print(
+    "q vs sigma_0"
+)
+
+print(
+    "========================================"
+)
+
+for sigma0_value, q in zip(
+    sigma0_list,
+    q_sigma0,
+):
+
+    print(
+        f"sigma_0={sigma0_value:.2f}: "
+        f"q={q:.6f}"
+    )
+
+
+print(
+    "\n========================================"
+)
+
+print(
+    "q vs sigma"
+)
+
+print(
+    "========================================"
+)
+
+for sigma_value, q in zip(
+    sigma_list,
+    q_sigma,
+):
+
+    print(
+        f"sigma={sigma_value:.2f}: "
+        f"q={q:.6f}"
+    )
+
+
+# ============================================================
+# SUMMARY
+# ============================================================
+
+print(
+    "\n========================================"
+)
+
+print(
+    "Finished."
+)
+
+print(
+    "========================================"
+)
+
+print(
+    f"Saved: {coverage_stem}.pdf"
+)
+
+print(
+    f"Saved: {coverage_stem}.png"
+)
+
+print(
+    f"Saved: {quantile_stem}.pdf"
+)
+
+print(
+    f"Saved: {quantile_stem}.png"
+)
+
+print(
+    f"All q plots use delta={delta_q}"
+)
+
+print(
+    f"Noise sensitivity plots use T={T_sensitivity}"
+)

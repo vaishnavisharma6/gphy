@@ -1,8 +1,64 @@
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from datagen import get_system
 from scipy.linalg import block_diag
 from scipy.optimize import brentq
+
+
+# ============================================================
+# IEEE / OVERLEAF PUBLICATION SETTINGS
+# ============================================================
+
+mpl.rcParams.update({
+    "text.usetex": True,
+
+    # Times-like text
+    "font.family": "serif",
+    "font.serif": [
+        "Times New Roman",
+        "Times",
+        "Nimbus Roman No9 L",
+        "DejaVu Serif"
+    ],
+
+    # Lighter LaTeX-like mathematics
+    "mathtext.fontset": "cm",
+
+    # Avoid heavy-looking text
+    "font.weight": "normal",
+    "axes.labelweight": "normal",
+
+    # IEEE-friendly sizes
+    "font.size": 8.0,
+    "axes.labelsize": 7.5,
+    "axes.titlesize": 8.0,
+    "legend.fontsize": 6.5,
+    "xtick.labelsize": 7.0,
+    "ytick.labelsize": 7.0,
+
+    # Thin publication-quality axes / curves
+    "lines.linewidth": 0.90,
+    "axes.linewidth": 0.65,
+
+    "xtick.major.width": 0.60,
+    "ytick.major.width": 0.60,
+    "xtick.major.size": 3.0,
+    "ytick.major.size": 3.0,
+
+    "axes.labelpad": 2.0,
+    "xtick.major.pad": 2.0,
+    "ytick.major.pad": 2.0,
+
+    "legend.frameon": False,
+
+    # Vector font embedding
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+
+    "savefig.bbox": "tight",
+    "savefig.pad_inches": 0.01,
+})
 
 
 # ============================================================
@@ -37,7 +93,10 @@ A, B, C_T = get_system(
 # ============================================================
 
 Q_single = np.diag([2.0, 3.0])
-Q = block_diag(*([Q_single] * T))
+
+Q = block_diag(
+    *([Q_single] * T)
+)
 
 Q_inv = np.linalg.inv(Q)
 
@@ -60,7 +119,8 @@ for i in range(1, T):
 
 Sigma_e = (
     NT @ sigmaw @ NT.T
-    + np.linalg.matrix_power(A, T)
+    +
+    np.linalg.matrix_power(A, T)
     @ sigma_0
     @ np.linalg.matrix_power(A, T).T
 )
@@ -211,23 +271,26 @@ else:
 # 12. Plot
 # ============================================================
 
-fig, ax = plt.subplots(figsize=(8, 5))
+# Compact IEEE single-column figure
+fig, ax = plt.subplots(
+    figsize=(3.25, 1.70)
+)
 
 
-# ------------------------------------------------------------
+# ============================================================
 # f(nu)
-# ------------------------------------------------------------
+# ============================================================
 
 ax.plot(
     nu_values,
     f_values,
-    linewidth=2
+    linewidth=0.90
 )
 
 
-# ------------------------------------------------------------
-# Log x-axis
-# ------------------------------------------------------------
+# ============================================================
+# Logarithmic x-axis
+# ============================================================
 
 ax.set_xscale("log")
 
@@ -238,13 +301,13 @@ ax.set_xlim(
 
 ax.set_ylim(
     0,
-    gamma_max * 1.05
+    gamma_max * 1.10
 )
 
 
-# ------------------------------------------------------------
-# Show a few x-values
-# ------------------------------------------------------------
+# ============================================================
+# X-axis ticks
+# ============================================================
 
 ax.set_xticks([
     1e-4,
@@ -260,25 +323,22 @@ ax.set_xticklabels([
     r"$10^{0}$",
     r"$10^{2}$",
     r"$10^{4}$"
-], fontsize=11)
+])
 
 
 # ============================================================
-# 13. gamma_0 horizontal line
+# gamma_0 = lower limit of f(nu)
 # ============================================================
 
 ax.axhline(
     gamma_0,
     linestyle="-.",
-    linewidth=1.5
+    linewidth=0.75
 )
 
 
 # ============================================================
-# 14. gamma horizontal line
-#
-# Starts exactly at the left boundary of the axes and ends
-# at nu*
+# gamma horizontal line
 # ============================================================
 
 if nu_star is not None:
@@ -287,14 +347,12 @@ if nu_star is not None:
         [nu_values[0], nu_star],
         [gamma, gamma],
         linestyle="--",
-        linewidth=1.5
+        linewidth=0.75
     )
 
 
 # ============================================================
-# 15. nu* vertical line
-#
-# Starts exactly from the x-axis (y = 0)
+# nu* vertical line
 # ============================================================
 
 if nu_star is not None:
@@ -303,58 +361,34 @@ if nu_star is not None:
         [nu_star, nu_star],
         [0, gamma],
         linestyle=":",
-        linewidth=1.5
+        linewidth=0.75
     )
 
     ax.scatter(
         [nu_star],
         [gamma],
-        s=60,
+        s=15,
         zorder=5
     )
 
 
 # ============================================================
-# 16. Y-axis markings
+# Y-axis symbolic markings only
 # ============================================================
 
-# Candidate intermediate values
-candidates = np.linspace(
-    0.15 * gamma_max,
-    0.85 * gamma_max,
-    8
-)
-
-# Remove values too close to gamma
-candidates = [
-    y for y in candidates
-    if not np.isclose(
-        y,
-        gamma,
-        rtol=0.05,
-        atol=0.01
-    )
-]
-
-# Choose two intermediate values
-y1 = candidates[0]
-y2 = candidates[-1]
-
 ax.set_yticks([
-    y1,
-    y2,
-    gamma
+    gamma,
+    gamma_max
 ])
 
 ax.set_yticklabels([
-    rf"${y1:.2f}$",
-    rf"${y2:.2f}$",
-    r"$\gamma$"
-], fontsize=12)
+    r"$\gamma$",
+    r"$x_f^\top \Sigma_{e_T}^{-1}x_f$"
+])
 
 
 # ============================================================
-# 17. X-axis marking for nu*
+# X-axis marking for nu*
 # ============================================================
 
 if nu_star is not None:
@@ -363,54 +397,74 @@ if nu_star is not None:
         r"$\nu_T^*$",
         xy=(nu_star, 0),
         xycoords="data",
-        xytext=(0, -12),
+        xytext=(0, -6),
         textcoords="offset points",
         ha="center",
         va="top",
-        fontsize=14
+        fontsize=7.5
     )
 
 
 # ============================================================
-# 18. Mark zero at left side of x-axis
-# ============================================================
-
-# ax.annotate(
-#     r"$0$",
-#     xy=(nu_values[0], 0),
-#     xycoords="data",
-#     xytext=(0, -12),
-#     textcoords="offset points",
-#     ha="center",
-#     va="top",
-#     fontsize=14
-# )
-
-
-# ============================================================
-# 19. Labels
+# Axis labels
 # ============================================================
 
 ax.set_ylabel(
-    r"$f(\nu_T)$",
-    fontsize=16
+    r"$f(\nu_T)$"
 )
 
 ax.set_xlabel(
-    r"$\nu_T$",
-    fontsize=16
+    r"$\nu_T$"
 )
 
 
 # ============================================================
-# 20. Final formatting
+# Grid
 # ============================================================
 
-plt.tight_layout()
+ax.grid(
+    True,
+    linestyle=':',
+    linewidth=0.30,
+    alpha=0.28
+)
 
-plt.savefig(
-    "f.jpeg",
-    dpi=300
+
+# ============================================================
+# Final formatting
+# ============================================================
+
+fig.tight_layout(
+    pad=0.25
+)
+
+
+# ============================================================
+# Save
+# ============================================================
+
+# PDF — use this in Overleaf
+fig.savefig(
+    "f.pdf",
+    bbox_inches="tight",
+    pad_inches=0.01
+)
+
+# Optional PNG preview
+fig.savefig(
+    "f.png",
+    dpi=600,
+    bbox_inches="tight",
+    pad_inches=0.01
+)
+
+# Optional JPEG preview
+fig.savefig(
+    "f.jpg",
+    dpi=600,
+    bbox_inches="tight",
+    pad_inches=0.01
 )
 
 plt.show()
+plt.close(fig)
